@@ -27,7 +27,7 @@ export function FoundationPreview() {
       <Modal open={open} onClose={() => setOpen(false)} title="About this foundation">
         <p>This Meta Edition brings REIBRY’s familiar visual system into an independent application.</p>
         <p>Shared cards, buttons, fields and dialogs are ready for future development. The example field is local UI state only; nothing is persisted.</p>
-        <p>Authentication, Memories, Capture, Plans, Ready Packs and AI integrations are not implemented here.</p>
+        <p>Authentication screens and server session checks are available. Live cloud authentication is not yet verified. Memories, Capture, Plans, Ready Packs and AI integrations are not implemented here.</p>
         <p>This is a design foundation, not a demonstration of future AI functionality.</p>
         <Button onClick={() => setOpen(false)}>Back to the foundation</Button>
       </Modal>

@@ -17,7 +17,7 @@ test("production app serves the foundation page and its stylesheet", async () =>
     "--hostname", "127.0.0.1", "--port", String(port),
   ], {
     windowsHide: true,
-    env: { ...process.env, NEXT_TELEMETRY_DISABLED: "1" },
+    env: { ...process.env, NEXT_TELEMETRY_DISABLED: "1", AUTH_ENABLED: "false" },
     stdio: ["ignore", "pipe", "pipe"],
   });
   let output = "";
@@ -49,12 +49,35 @@ test("production app serves the foundation page and its stylesheet", async () =>
     assert.match(html, /About this foundation/);
     assert.match(html, /<dialog[^>]*aria-labelledby=/);
     assert.match(html, /<label for="preview-label">Example text field/);
-    assert.doesNotMatch(html, /href="\/(auth|memories|capture|plans|settings)"/);
+    assert.doesNotMatch(html, /href="\/(memories|capture|plans|settings)"/);
     const stylesheet = html.match(/<link[^>]*href="([^"]+\.css[^"]*)"/)?.[1];
     assert.ok(stylesheet, "Rendered page must include its CSS");
     const cssResponse = await fetch(new URL(stylesheet.replaceAll("&amp;", "&"), origin));
     assert.equal(cssResponse.status, 200);
     assert.match(cssResponse.headers.get("content-type"), /text\/css/);
+    const auth = await fetch(origin + "/auth");
+    assert.equal(auth.status, 200);
+    const authHtml = await auth.text();
+    assert.match(authHtml, /Sign in securely/);
+    assert.match(authHtml, /Authentication is not configured/);
+    const session = await fetch(origin + "/api/auth/session");
+    assert.deepEqual((await session.json()).data, { user: null });
+    assert.match(session.headers.get("cache-control"), /no-store/);
+    const protectedResponse = await fetch(origin + "/api/auth/me");
+    assert.equal(protectedResponse.status, 401);
+    const account = await fetch(origin + "/account", { redirect: "manual" });
+    assert.equal(account.status, 307);
+    assert.match(account.headers.get("location"), /\/auth\?next=/);
+    const rejected = await fetch(origin + "/api/auth/sign-in", { method: "POST", headers: { Origin: origin, "Content-Type": "application/json" },
+      body: JSON.stringify({ email: "person@example.test", password: "test-only-password" }) });
+    assert.equal(rejected.status, 503);
+    assert.equal((await rejected.json()).error.code, "AUTH_NOT_CONFIGURED");
+    const logout = await fetch(origin + "/api/auth/sign-out", { method: "POST", headers: { Origin: origin } });
+    assert.equal(logout.status, 200);
+    assert.match(logout.headers.get("set-cookie"), /HttpOnly/i);
+    assert.match(logout.headers.get("set-cookie"), /Max-Age=0/i);
+    const csrf = await fetch(origin + "/api/auth/sign-out", { method: "POST", headers: { Origin: "https://outside.test" } });
+    assert.equal(csrf.status, 403);
     const missing = await fetch(origin + "/not-a-real-route");
     assert.equal(missing.status, 404);
   } finally {
