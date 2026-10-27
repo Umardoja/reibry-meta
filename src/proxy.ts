@@ -10,7 +10,8 @@ export async function proxy(request: NextRequest) {
   try { origin = canonicalOrigin(request, process.env.AUTH_SITE_URL); } catch { return new NextResponse("Authentication is not configured.", { status: 503, headers: { "Cache-Control": "no-store" } }); }
   const incoming = request.cookies.getAll();
   const jar = cookieJar(incoming);
-  const destination = new URL("/auth?next=/account", origin);
+  const protectedDestination = request.nextUrl.pathname.startsWith("/memories") ? "/memories" : "/account";
+  const destination = new URL("/auth?next=" + encodeURIComponent(protectedDestination), origin);
   if (!incoming.some(c => isAuthCookie(c.name))) return applyAuthCookies(NextResponse.redirect(destination), [], origin.startsWith("https:"));
   try {
     const user = await bounded(signal => createAuthAdapter(jar, signal, origin).verify());
@@ -22,4 +23,4 @@ export async function proxy(request: NextRequest) {
     return applyAuthCookies(NextResponse.redirect(destination), [], origin.startsWith("https:"));
   }
 }
-export const config = { matcher: ["/account/:path*"] };
+export const config = { matcher: ["/account/:path*", "/memories/:path*"] };

@@ -85,3 +85,6 @@ h1 { font-size: clamp(2.75rem, 6vw, 4.5rem); line-height: 1.08; letter-spacing: 
 .auth-error { margin-top: 16px; color: var(--error); font-size: .875rem; }
 .auth-wrap > a { min-height: 44px; display: inline-flex; align-items: center; }
 .auth-form [role="status"] { margin-top: 16px; }
+.memory-list { list-style: none; display: grid; gap: 12px; padding: 0; margin: 24px 0 0; }
+.memory-list h2 { font-size: 1rem; overflow-wrap: anywhere; }
+.memory-list p { color: var(--on-surface-var); font-size: .875rem; }

@@ -49,7 +49,8 @@ test("production app serves the foundation page and its stylesheet", async () =>
     assert.match(html, /About this foundation/);
     assert.match(html, /<dialog[^>]*aria-labelledby=/);
     assert.match(html, /<label for="preview-label">Example text field/);
-    assert.doesNotMatch(html, /href="\/(memories|capture|plans|settings)"/);
+    assert.doesNotMatch(html, /href="\/(capture|plans|settings)"/);
+    assert.match(html, /href="\/memories"/);
     const stylesheet = html.match(/<link[^>]*href="([^"]+\.css[^"]*)"/)?.[1];
     assert.ok(stylesheet, "Rendered page must include its CSS");
     const cssResponse = await fetch(new URL(stylesheet.replaceAll("&amp;", "&"), origin));
@@ -65,9 +66,18 @@ test("production app serves the foundation page and its stylesheet", async () =>
     assert.match(session.headers.get("cache-control"), /no-store/);
     const protectedResponse = await fetch(origin + "/api/auth/me");
     assert.equal(protectedResponse.status, 401);
+    const memories = await fetch(origin + "/api/memories");
+    assert.equal(memories.status, 401);
+    assert.equal((await memories.json()).error.code, "AUTH_REQUIRED");
+    const memoryCreate = await fetch(origin + "/api/memories", { method: "POST", headers: { Origin: origin, "Content-Type": "application/json" },
+      body: JSON.stringify({ rawText: "must not persist without a session" }) });
+    assert.equal(memoryCreate.status, 401);
     const account = await fetch(origin + "/account", { redirect: "manual" });
     assert.equal(account.status, 307);
     assert.match(account.headers.get("location"), /\/auth\?next=/);
+    const memoryPage = await fetch(origin + "/memories", { redirect: "manual" });
+    assert.equal(memoryPage.status, 307);
+    assert.match(memoryPage.headers.get("location"), /\/auth\?next=/);
     const rejected = await fetch(origin + "/api/auth/sign-in", { method: "POST", headers: { Origin: origin, "Content-Type": "application/json" },
       body: JSON.stringify({ email: "person@example.test", password: "test-only-password" }) });
     assert.equal(rejected.status, 503);

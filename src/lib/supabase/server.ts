@@ -7,7 +7,9 @@ import { cookieJar, cookieKey } from "./cookies.ts";
 import { AuthFailure, missingSession, providerFailure } from "../auth/policy.ts";
 import type { AuthAdapter } from "../auth/handler.ts";
 
-export function createAuthAdapter(jar: ReturnType<typeof cookieJar>, signal: AbortSignal, requestOrigin?: string, dependencies: { env: Record<string, string | undefined>; fetch: typeof fetch } = { env: process.env, fetch }): AuthAdapter {
+export type SupabaseServerDependencies = { env: Record<string, string | undefined>; fetch: typeof fetch };
+export function createUserSupabaseClient(jar: ReturnType<typeof cookieJar>, signal: AbortSignal, requestOrigin?: string,
+  dependencies: SupabaseServerDependencies = { env: process.env, fetch }) {
   const config = authConfig(dependencies.env);
   if (requestOrigin && requestOrigin !== config.site) throw new AuthFailure("AUTH_NOT_CONFIGURED");
   const client = createServerClient(config.url, config.key, {
@@ -15,6 +17,11 @@ export function createAuthAdapter(jar: ReturnType<typeof cookieJar>, signal: Abo
     cookies: { getAll: jar.getAll, setAll: items => jar.setAll(items, signal) },
     global: { fetch: (input, init) => dependencies.fetch(input, { ...init, signal, cache: "no-store" }) },
   });
+  return { client, config };
+}
+export function createAuthAdapter(jar: ReturnType<typeof cookieJar>, signal: AbortSignal, requestOrigin?: string,
+  dependencies: SupabaseServerDependencies = { env: process.env, fetch }): AuthAdapter {
+  const { client, config } = createUserSupabaseClient(jar, signal, requestOrigin, dependencies);
   return {
     async signIn(email, password) {
       const { data, error } = await client.auth.signInWithPassword({ email, password });

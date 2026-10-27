@@ -12,7 +12,7 @@
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "next typegen && tsc --noEmit",
-    "test": "node --conditions=react-server --experimental-strip-types --test tests/auth.test.ts tests/smoke.mjs"
+    "test": "node --conditions=react-server --experimental-strip-types --test tests/auth.test.ts tests/memory.test.ts tests/smoke.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "0.12.7",
