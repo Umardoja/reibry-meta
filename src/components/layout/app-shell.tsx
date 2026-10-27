@@ -18,7 +18,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       <nav className="foundation-nav" aria-label="Foundation navigation">
         <Link href="/" className="nav-btn">Home</Link>
         <Link href="/memories" className="nav-btn">Memories</Link>
-        <Link href="/#ui-foundation" className="nav-btn">UI foundation</Link>
+        <Link href="/capture" className="nav-btn">Capture</Link>
       </nav>
       <footer className="app-footer">Built on the original REIBRY foundation.</footer>
     </div>

@@ -6,7 +6,7 @@ A personal AI memory and action platform, developed incrementally for the Meta G
 
 ## Current milestone
 
-Stage 5 adds the secure Memory and persistence foundation to the Stage 4 authentication system: validated Memory contracts, owner-bound repositories, authenticated CRUD APIs, a minimal real-records-only Memories page, and a local SQL migration with row-level security. Authentication and database access remain disabled by default. **Real Supabase authentication and hosted RLS are NOT VERIFIED.**
+Stage 6 adds source-preserving note and public-link capture on the Stage 5 Memory boundary. Signed-in users can use `/capture`; generic links are stored without server fetching, while fixed YouTube/TikTok oEmbed metadata is optional and bounded. Owner-scoped deduplication has a local uniqueness migration. Authentication and database access remain disabled by default. **Real Supabase authentication, persistence, hosted RLS, and database deduplication are NOT VERIFIED.**
 
 The root page remains an honest development foundation. Its About dialog and unsaved text-field preview are UI demonstrations. Sign in leads to the implemented authentication screen; future product features are absent.
 
@@ -29,7 +29,7 @@ npm test
 npm start -- --hostname 127.0.0.1
 ~~~
 
-Build before npm test. Tests combine deterministic auth and Memory behavior, mocked SDK/repository responses, static migration checks, and a production localhost smoke test. The smoke server explicitly disables auth, rejects unauthenticated Memory API/page access, and shuts down afterward. It does not create real users, contact hosted Supabase or execute SQL. The in-memory repository exists only under `tests/support` and cannot be enabled in production. Next.js generates ignored next-env.d.ts; dependencies, `.next` and TypeScript output remain ignored.
+Build before npm test. Tests combine deterministic auth, Memory and Capture behavior, mocked SDK/repository/network responses, static migration checks, and a production localhost smoke test. The smoke server explicitly disables auth, rejects unauthenticated Memory/Capture access, and shuts down afterward. It does not create real users, contact hosted Supabase or execute SQL. The in-memory repository exists only under `tests/support` and cannot be enabled in production. Next.js generates ignored next-env.d.ts; dependencies, `.next` and TypeScript output remain ignored.
 
 ## Authentication configuration and boundaries
 
@@ -43,25 +43,27 @@ Endpoints: POST /api/auth/sign-in, /api/auth/sign-up, /api/auth/sign-out; GET /a
 
 ## Memory persistence boundary
 
-Memory endpoints are `GET`/`POST /api/memories` and `GET`/`PATCH`/`DELETE /api/memories/{id}`. Stage 5 accepts basic text persistence only. Clients may supply `rawText` and an optional `title`; `userId`, status, metadata, identifiers and timestamps are server controlled. Requests use the Stage 4 verified session, are bounded to eight seconds and 64 KiB, require exact same-origin mutation requests, and return private no-store responses. Lists use stable newest-first ordering with `limit` 1–50 and `offset` 0–5,000.
+Memory endpoints are `GET`/`POST /api/memories` and `GET`/`PATCH`/`DELETE /api/memories/{id}`. The direct Memory POST remains basic-text-only. Stage 6 adds authenticated `POST /api/capture` for a note or public HTTPS link; ownership, status, metadata, identifiers and timestamps remain server controlled. Requests use the Stage 4 verified session, are bounded to eight seconds and 64 KiB, require exact same-origin mutation requests, and return private no-store responses. Lists use stable newest-first ordering with `limit` 1–50 and `offset` 0–5,000.
 
 The migration at `supabase/migrations/20261027000000_memory_foundation.sql` is source code only. It creates the independent Meta Edition `memories` table, owner index, timestamp trigger, column-level grants and four owner RLS policies. It has not been applied anywhere. `supabase/tests/memory_rls.sql` is the later disposable-database verification script and must never run against production. See [Memory architecture](docs/meta/MEMORY_ARCHITECTURE.md) for the dependency map and mocked-versus-real verification boundary.
+
+Capture limits notes to 50,000 characters, links to 2,048, titles to 200, and metadata responses to 65,536 bytes with a three-second total deadline. Generic source URLs are never fetched. YouTube/TikTok metadata uses fixed oEmbed hosts, public-address checks, manual redirect rejection and JSON-only streaming. Enrichment failure never discards a valid source. The local `20261027010000_capture_deduplication.sql` migration adds owner/key uniqueness but has not been applied. See [Capture architecture](docs/meta/CAPTURE_ARCHITECTURE.md).
 
 ## Provenance
 
 This edition builds on the original September REIBRY application at source commit 76d3494465bab43a5051498e90b9a486a65312b9. PREEXISTING_WORK.md and docs/meta/MIGRATION_LOG.md preserve the migration history. Stages 1–3 remain intact.
 
-Stage 3 adapted selected original globals.css tokens, the inline brain mark, shell and UI conventions; details are in docs/meta/DESIGN_SYSTEM.md. Stage 4 adapted auth and Supabase session conventions. Stage 5 adapts the original Memory DTO, owner-bound store, Supabase query ordering, API routes and owner RLS. Bounded requests, a smaller contract and strict production/test separation are Meta Edition adaptations. These remain inherited foundations, not new Meta AI functionality.
+Stage 3 adapted selected original globals.css tokens, the inline brain mark, shell and UI conventions; details are in docs/meta/DESIGN_SYSTEM.md. Stage 4 adapted auth and Supabase session conventions. Stage 5 adapts the original Memory DTO, owner-bound store, Supabase query ordering, API routes and owner RLS. Stage 6 adapts original capture titles, source preservation, platform detection, deduplication and capture UI/API patterns while replacing arbitrary URL fetching and excluding synthetic fallback analysis. These remain inherited foundations, not new Meta AI functionality.
 
 Original REIBRY contributors retain attribution and applicable rights. No publication license is inferred. No private or binary assets were copied. The original font stack uses its system fallback because a local font asset's license was not verified.
 
 ## Scope and release status
 
-No profiles, onboarding tables, roles, admin model, password recovery, MFA, OAuth, native sessions, Capture, enrichment, retrieval, embeddings, Plans, Ready Packs or AI providers are included. The Memory page displays only records returned by the authenticated API and has no capture form. Stage 5 adds no dependency; existing direct dependencies remain `@supabase/ssr` 0.12.7, `@supabase/supabase-js` 2.116.0 and `server-only` 0.0.1.
+No profiles, onboarding tables, roles, admin model, password recovery, MFA, OAuth, native sessions, arbitrary-page previewing, transcripts, file capture, retrieval, embeddings, Plans, Ready Packs or AI providers are included. The Memory page displays only records returned by the authenticated API. Stage 6 adds no dependency; existing direct dependencies remain `@supabase/ssr` 0.12.7, `@supabase/supabase-js` 2.116.0 and `server-only` 0.0.1.
 
 All milestones remain local. The earlier remote LFS incident is unresolved. No push or remote LFS operation is authorized. The existing untracked recovery report is preserved and is not a release artifact.
 
-Stage 6, only after separate authorization, should add text/link capture, safe source preservation, enrichment and deduplication on top of this repository. It must not add retrieval, AI analysis or production migrations by implication. Live auth and RLS verification still require separate approval for a disposable project.
+Stage 7, only after separate authorization, should add owner-scoped lexical/semantic retrieval and provenance validation without changing Capture into an AI-analysis path. A later Meta Model API milestone must first verify current official Muse access, endpoints, models and account authorization; no model assumption or credential has been introduced here.
 
 ## Validation limits
 

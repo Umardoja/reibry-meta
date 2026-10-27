@@ -1,7 +1,7 @@
 import "server-only";
 // Adapted from original REIBRY data/supabase-store.ts. The client is non-elevated and user scoped.
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { decodeMemory, serializeMemory, type MemoryUpdate, type NewTextMemory } from "./contracts.ts";
+import { decodeMemory, serializeMemory, type MemoryUpdate, type NewMemory, type NewTextMemory } from "./contracts.ts";
 import { MemoryRepositoryFailure, type MemoryRepository } from "./repository.ts";
 
 const columns = "id,user_id,title,source_type,source_url,raw_text,analysis_status,metadata,created_at,updated_at";
@@ -13,6 +13,9 @@ function decode(value: unknown) {
   try { return serializeMemory(decodeMemory(value)); } catch { return storage(new Error("invalid-row")); }
 }
 export function createSupabaseMemoryRepository(client: SupabaseClient, ownerId: string): MemoryRepository {
+  const insertMemory = (input: NewMemory, dedupeKey: string | null) => client.from("memories").insert({ user_id: ownerId,
+    title: input.title, source_type: input.sourceType, source_url: input.sourceUrl, raw_text: input.rawText,
+    analysis_status: input.analysisStatus, metadata: input.metadata, dedupe_key: dedupeKey });
   return {
     ownerId,
     async create(input: NewTextMemory) {
@@ -21,6 +24,16 @@ export function createSupabaseMemoryRepository(client: SupabaseClient, ownerId: 
         .select(columns).single();
       if (error || !data) return storage(error);
       return decode(data);
+    },
+    async createUnique(input, dedupeKey) {
+      const { data, error } = await insertMemory(input, dedupeKey).select(columns).single();
+      if (!error && data) return { memory: decode(data), duplicate: false };
+      if (error?.code !== "23505") return storage(error);
+      // The unique index includes owner identity. This lookup can only return this repository's owner.
+      const existing = await client.from("memories").select(columns).eq("user_id", ownerId)
+        .eq("dedupe_key", dedupeKey).maybeSingle();
+      if (existing.error || !existing.data) return storage(existing.error);
+      return { memory: decode(existing.data), duplicate: true };
     },
     async list({ limit, offset }) {
       const { data, error } = await client.from("memories").select(columns).eq("user_id", ownerId)

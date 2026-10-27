@@ -1,7 +1,8 @@
 // Test-only deterministic adapter. Production code has no import path to this module.
-import { serializeMemory, type Memory, type MemoryList, type MemoryUpdate, type NewTextMemory } from "../../src/lib/memory/contracts.ts";
+import { serializeMemory, type Memory, type MemoryList, type MemoryUpdate, type NewMemory, type NewTextMemory } from "../../src/lib/memory/contracts.ts";
 import { MemoryRepositoryFailure, type MemoryRepository } from "../../src/lib/memory/repository.ts";
 export type MemoryTestState = Map<string, Memory>;
+const dedupeStates = new WeakMap<MemoryTestState, Map<string, string>>();
 export function createMemoryTestState(seed: Memory[] = []): MemoryTestState {
   return new Map(seed.map(item => [item.id, serializeMemory(item)]));
 }
@@ -9,7 +10,17 @@ export function createInMemoryMemoryRepository(ownerId: string, state: MemoryTes
   options: { now?: () => string; id?: () => string } = {}): MemoryRepository {
   const now = options.now ?? (() => "2026-10-27T12:00:00.000Z");
   let sequence = 1;
-  const id = options.id ?? (() => `00000000-0000-4000-8000-${String(sequence++).padStart(12, "0")}`);
+  const id = options.id ?? (() => {
+    let candidate = `00000000-0000-4000-8000-${String(sequence++).padStart(12, "0")}`;
+    while (state.has(candidate)) candidate = `00000000-0000-4000-8000-${String(sequence++).padStart(12, "0")}`;
+    return candidate;
+  });
+  const dedupe = dedupeStates.get(state) ?? new Map<string, string>(); dedupeStates.set(state, dedupe);
+  const createRecord = (input: NewMemory) => {
+    const timestamp = now();
+    const memory: Memory = { id: id(), userId: ownerId, ...input, createdAt: timestamp, updatedAt: timestamp };
+    state.set(memory.id, memory); return serializeMemory(memory);
+  };
   const owned = (memoryId: string) => {
     const item = state.get(memoryId);
     if (!item || item.userId !== ownerId) throw new MemoryRepositoryFailure("NOT_FOUND");
@@ -18,10 +29,12 @@ export function createInMemoryMemoryRepository(ownerId: string, state: MemoryTes
   return {
     ownerId,
     async create(input: NewTextMemory) {
-      const timestamp = now();
-      const memory: Memory = { id: id(), userId: ownerId, title: input.title, sourceType: "text", sourceUrl: null,
-        rawText: input.rawText, analysisStatus: "processing", metadata: {}, createdAt: timestamp, updatedAt: timestamp };
-      state.set(memory.id, memory); return serializeMemory(memory);
+      return createRecord({ ...input, sourceType: "text", sourceUrl: null, analysisStatus: "processing", metadata: {} });
+    },
+    async createUnique(input, dedupeKey) {
+      const ownerKey = `${ownerId}:${dedupeKey}`; const existingId = dedupe.get(ownerKey);
+      if (existingId) return { memory: serializeMemory(state.get(existingId)!), duplicate: true };
+      const memory = createRecord(input); dedupe.set(ownerKey, memory.id); return { memory, duplicate: false };
     },
     async list(input: MemoryList) {
       const items = [...state.values()].filter(item => item.userId === ownerId)

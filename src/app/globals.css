@@ -5,6 +5,7 @@
 html { color-scheme: light; scroll-padding-block: 24px; }
 body { margin: 0; background: var(--bg); color: var(--on-surface); font-family: var(--font-sans); -webkit-font-smoothing: antialiased; line-height: 1.6; }
 button, input { font: inherit; }
+textarea { font: inherit; }
 button, a, input { -webkit-tap-highlight-color: transparent; }
 a { color: var(--primary-mid); }
 button { cursor: pointer; }
@@ -88,3 +89,21 @@ h1 { font-size: clamp(2.75rem, 6vw, 4.5rem); line-height: 1.08; letter-spacing: 
 .memory-list { list-style: none; display: grid; gap: 12px; padding: 0; margin: 24px 0 0; }
 .memory-list h2 { font-size: 1rem; overflow-wrap: anywhere; }
 .memory-list p { color: var(--on-surface-var); font-size: .875rem; }
+
+/* Stage 6 Capture presentation, adapted from original REIBRY capture form conventions. */
+.section-heading { margin-bottom: var(--sp-xl); }
+.section-heading > p:last-child { margin-top: var(--sp-md); max-width: 42rem; color: var(--on-surface-var); }
+.eyebrow { font-size: .6875rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--primary-mid); }
+.capture-form { display: grid; gap: var(--sp-lg); }
+.capture-form > .button { width: 100%; }
+.capture-choice { display: flex; flex-wrap: wrap; gap: var(--sp-sm) var(--sp-xl); margin: 0; padding: 0; border: 0; }
+.capture-choice legend { width: 100%; margin-bottom: var(--sp-sm); font-size: .875rem; font-weight: 700; }
+.capture-choice label { display: inline-flex; align-items: center; gap: var(--sp-sm); min-height: 44px; }
+.capture-choice input { width: 20px; height: 20px; accent-color: var(--primary-mid); }
+.capture-form .field { margin: 0; }
+.capture-textarea { min-height: 156px; resize: vertical; }
+.optional { color: var(--on-surface-var); font-weight: 400; }
+.capture-result { display: grid; gap: var(--sp-sm); margin-top: var(--sp-lg); }
+.capture-result .button { justify-self: start; margin-top: var(--sp-sm); }
+.source-value { overflow-wrap: anywhere; color: var(--on-surface-var); }
+@media (max-width: 430px) { .capture-choice { display: grid; } .capture-result .button { width: 100%; } }

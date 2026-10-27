@@ -21,8 +21,8 @@ export function MemoryLibrary() {
   return <RequireAuth>
     {view.status === "loading" && <p role="status">Loading your Memories… This request is limited to 12 seconds.</p>}
     {view.status === "error" && <p role="alert" className="auth-error">{view.message}</p>}
-    {view.status === "ready" && view.items.length === 0 && <Card><h2>No Memories yet</h2><p>Basic text Memory persistence is ready. Capture arrives in the next milestone.</p></Card>}
+    {view.status === "ready" && view.items.length === 0 && <Card><h2>No Memories yet</h2><p><a href="/capture">Capture a note or link</a> to create your first Memory.</p></Card>}
     {view.status === "ready" && view.items.length > 0 && <ul className="memory-list" aria-label="Saved Memories">{view.items.map(item =>
-      <li key={item.id}><Card><h2>{item.title}</h2><p>{item.sourceType === "text" ? "Text Memory" : "Link Memory"} · {new Date(item.createdAt).toLocaleDateString()}</p></Card></li>)}</ul>}
+      <li key={item.id}><Card><h2>{item.title}</h2><p>{item.sourceType === "text" ? "Text Memory" : item.sourceUrl || "Link Memory"} · {item.analysisStatus} · {new Date(item.createdAt).toLocaleDateString()}</p></Card></li>)}</ul>}
   </RequireAuth>;
 }

@@ -17,6 +17,7 @@ export interface Memory {
   updatedAt: string;
 }
 export type NewTextMemory = { title: string; rawText: string };
+export type NewMemory = Pick<Memory, "title" | "sourceType" | "sourceUrl" | "rawText" | "analysisStatus" | "metadata">;
 export type MemoryUpdate = { title?: string; rawText?: string };
 export type MemoryPage = { items: Memory[]; nextOffset: number | null };
 export type MemoryList = { limit: number; offset: number };

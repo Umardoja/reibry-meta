@@ -49,8 +49,9 @@ test("production app serves the foundation page and its stylesheet", async () =>
     assert.match(html, /About this foundation/);
     assert.match(html, /<dialog[^>]*aria-labelledby=/);
     assert.match(html, /<label for="preview-label">Example text field/);
-    assert.doesNotMatch(html, /href="\/(capture|plans|settings)"/);
+    assert.doesNotMatch(html, /href="\/(plans|settings)"/);
     assert.match(html, /href="\/memories"/);
+    assert.match(html, /href="\/capture"/);
     const stylesheet = html.match(/<link[^>]*href="([^"]+\.css[^"]*)"/)?.[1];
     assert.ok(stylesheet, "Rendered page must include its CSS");
     const cssResponse = await fetch(new URL(stylesheet.replaceAll("&amp;", "&"), origin));
@@ -72,12 +73,18 @@ test("production app serves the foundation page and its stylesheet", async () =>
     const memoryCreate = await fetch(origin + "/api/memories", { method: "POST", headers: { Origin: origin, "Content-Type": "application/json" },
       body: JSON.stringify({ rawText: "must not persist without a session" }) });
     assert.equal(memoryCreate.status, 401);
+    const captureCreate = await fetch(origin + "/api/capture", { method: "POST", headers: { Origin: origin, "Content-Type": "application/json" },
+      body: JSON.stringify({ sourceType: "text", content: "must not persist without a session" }) });
+    assert.equal(captureCreate.status, 401);
     const account = await fetch(origin + "/account", { redirect: "manual" });
     assert.equal(account.status, 307);
     assert.match(account.headers.get("location"), /\/auth\?next=/);
     const memoryPage = await fetch(origin + "/memories", { redirect: "manual" });
     assert.equal(memoryPage.status, 307);
     assert.match(memoryPage.headers.get("location"), /\/auth\?next=/);
+    const capturePage = await fetch(origin + "/capture", { redirect: "manual" });
+    assert.equal(capturePage.status, 307);
+    assert.match(capturePage.headers.get("location"), /\/auth\?next=/);
     const rejected = await fetch(origin + "/api/auth/sign-in", { method: "POST", headers: { Origin: origin, "Content-Type": "application/json" },
       body: JSON.stringify({ email: "person@example.test", password: "test-only-password" }) });
     assert.equal(rejected.status, 503);

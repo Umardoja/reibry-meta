@@ -1,4 +1,4 @@
-import type { Memory, MemoryList, MemoryPage, MemoryUpdate, NewTextMemory } from "./contracts.ts";
+import type { Memory, MemoryList, MemoryPage, MemoryUpdate, NewMemory, NewTextMemory } from "./contracts.ts";
 export type MemoryRepositoryFailureCode = "NOT_FOUND" | "STORAGE_UNAVAILABLE";
 export class MemoryRepositoryFailure extends Error {
   code: MemoryRepositoryFailureCode;
@@ -8,6 +8,7 @@ export class MemoryRepositoryFailure extends Error {
 export interface MemoryRepository {
   readonly ownerId: string;
   create(input: NewTextMemory): Promise<Memory>;
+  createUnique(input: NewMemory, dedupeKey: string): Promise<{ memory: Memory; duplicate: boolean }>;
   list(input: MemoryList): Promise<MemoryPage>;
   read(id: string): Promise<Memory>;
   update(id: string, input: MemoryUpdate): Promise<Memory>;

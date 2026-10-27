@@ -134,6 +134,19 @@ test("Supabase adapter writes and filters the verified owner without elevated ac
   assert.ok(queries[1].calls.some(call => call[0] === "eq" && call[1] === "user_id" && call[2] === userA));
   assert.equal("service_role" in insert, false);
 });
+test("Supabase duplicate conflicts are re-read only by verified owner and dedupe key", async () => {
+  const row = { id: idA, user_id: userA, title: "Link", source_type: "link", source_url: "https://example.com", raw_text: null,
+    analysis_status: "processing", metadata: {}, created_at: at, updated_at: at };
+  const queries: FakeQuery[] = []; let call = 0;
+  const client = { from: () => { const response = call++ === 0 ? { data: null, error: { code: "23505" } } : { data: row, error: null };
+    const query = new FakeQuery(response); queries.push(query); return query; } } as unknown as SupabaseClient;
+  const repository = createSupabaseMemoryRepository(client, userA); const dedupeKey = "a".repeat(64);
+  const result = await repository.createUnique({ title: "Link", sourceType: "link", sourceUrl: "https://example.com", rawText: null,
+    analysisStatus: "processing", metadata: {} }, dedupeKey);
+  assert.equal(result.duplicate, true); assert.equal(result.memory.id, idA);
+  assert.ok(queries[1].calls.some(item => item[0] === "eq" && item[1] === "user_id" && item[2] === userA));
+  assert.ok(queries[1].calls.some(item => item[0] === "eq" && item[1] === "dedupe_key" && item[2] === dedupeKey));
+});
 test("production modules have no mock persistence fallback", async () => {
   const files = ["src/lib/memory/server.ts", "src/lib/memory/supabase-repository.ts", "src/app/api/memories/route.ts"];
   for (const file of files) {
