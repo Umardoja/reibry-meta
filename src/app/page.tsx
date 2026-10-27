@@ -1,25 +1,18 @@
+import { Container, Card } from "@/components/ui/primitives";
+import { FoundationPreview } from "@/components/ui/foundation-preview";
 export default function Home() {
   return (
-    <div className="foundation">
-      <header className="brand" aria-label="REIBRY">
-        <span className="brand-mark" aria-hidden="true">r.</span>
-        <span>REIBRY</span>
-      </header>
-
-      <main>
-        <p className="edition">Meta Edition — Application Foundation</p>
-        <h1>From Saved<br />to Done<span className="period">.</span></h1>
-        <p className="description">A personal AI memory and action platform.</p>
-        <div className="foundation-note">
+    <Container>
+      <section className="intro" aria-labelledby="tagline">
+        <p className="section-label">REIBRY</p>
+        <h1 id="tagline">From Saved<br />to Done.</h1>
+        <p className="intro-description">A personal AI memory and action platform.</p>
+        <Card className="foundation-status">
           <span className="status-dot" aria-hidden="true" />
-          <p>A new chapter for REIBRY.<br />The foundation is here. More to come.</p>
-        </div>
-      </main>
-
-      <footer>
-        <span>REIBRY Meta Edition</span>
-        <span>Built on the original REIBRY foundation.</span>
-      </footer>
-    </div>
+          <div><h2>Meta Edition — Application Foundation</h2><p>The familiar REIBRY experience, built forward one stage at a time.</p></div>
+        </Card>
+      </section>
+      <FoundationPreview />
+    </Container>
   );
 }

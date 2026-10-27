@@ -31,3 +31,24 @@
 - Push status: NOT PUSHED. No remote Git or LFS operations are allowed while the incident remains unresolved.
 - Limitations: no browser visual or assistive-technology test; no authentication, Supabase integration, Memories, Capture, retrieval, Plans, Ready Packs, Meta API, or agent actions. The starter is not a working AI product.
 - Stage 3 boundary: after separate authorization, selectively migrate essential design tokens, typography, layout, and reusable UI primitives with provenance and permissions review. Do not include backend services or feature modules. Stage 3 has not begun.
+
+## Stage 3 - Design system and shared UI foundation
+
+- Date: 2026-10-27 (Africa/Lagos).
+- Parent: bc67c2ba7e0db751c507642ab3caac6b44b1addf on main; Stage 2 preserved. Baseline npm test passed before edits.
+- Imported foundation: selected REIBRY brand, surface, semantic, spacing, radius and shadow tokens; typography conventions; card/button/input/header/nav/modal/skeleton presentation; inline brain brand mark. This is inherited design work, not new Meta AI functionality.
+- Source reference: original September REIBRY commit 76d3494465bab43a5051498e90b9a486a65312b9. Source files and dependency decisions are mapped in docs/meta/DESIGN_SYSTEM.md; original contributor attribution is retained in adapted files.
+- Adaptations: presentation-only shell; root/anchor navigation only; native dialog with explicit keyboard wrapping, Escape, focus restoration, scroll lock and bounded scroll region; input label/hint association; focus rings and at least 44px touch targets; mobile safe-area padding; reduced-motion override. New preview interactions explain the foundation and do not implement future features.
+- Added: src/app/tokens.css; src/components/layout/app-shell.tsx; src/components/ui/brand-mark.tsx, primitives.tsx, modal.tsx, foundation-preview.tsx; docs/meta/DESIGN_SYSTEM.md.
+- Modified: src/app/globals.css, layout.tsx, page.tsx; tests/smoke.mjs; README.md; docs/meta/MIGRATION_LOG.md.
+- Dependencies: NONE added or changed; package.json and package-lock.json unchanged. No fonts, private images, documents or binary assets copied.
+- Validation: npm run lint PASS; npm run typecheck PASS; npm run build PASS (default Turbopack, static root); npm test PASS (1 production HTTP smoke test); git diff --check PASS. Root and stylesheet HTTP 200; unknown route HTTP 404. Application imports reviewed: React, Next.js and local UI only, no Node/backend leakage.
+- Corrections during validation: initial lint rejected a plain root anchor; replaced with Next.js Link. Review caught and fixed a missing extracted token-block brace. Browser boundary tabbing needed explicit focus wrapping. A later HTTP smoke run hit the old two-second response timeout under Windows load; bounded per-request timeout increased to ten seconds, then smoke test and test-file lint passed. No application build workaround or dependency changes.
+- Browser QA: production build inspected at 390x844, 430x932 and 1440x1000. No horizontal overflow; one-column mobile and two-column desktop previews. Visible controls measured >=44px height. Skip-link keyboard focus is visible and targets main. Dialog name, initial focus, forward/reverse wrapping, Escape, restored trigger focus and restored body scrolling verified. Additional 390x360 check: dialog bounds y=16..344, internally scrollable, no horizontal overflow. Input label/hint association and reset on reload verified. Root and UI-section navigation verified. Browser console reported no warnings/errors.
+- Contrast: body 16.25:1; secondary text on white 9.32:1; brand/section text on page 6.10:1; primary button 9.28:1; danger button 8.50:1; input boundary 4.49:1; focus outline on white 6.41:1.
+- Limits: reduced-motion CSS inspected but OS preference not toggled; safe-area viewport and CSS inspected but not tested on a physically notched device; no screen-reader or cross-browser suite. The original Geist binary lacked verified adjacent licensing and was omitted; typography uses the original stack's system fallback. Owner publication-rights review remains necessary.
+- Safety: no secrets or LFS pointers found in intended files; build outputs ignored; original tracked files and selected Git metadata match the read-only SHA-256 baseline. Recovery report stays untracked. No Git LFS command, remote Git operation, push or deployment.
+- Commit message: port(ui): migrate REIBRY design system
+- Commit SHA: recorded in completion response; resolve the milestone with git log -1 --format=%H --grep="^port(ui): migrate REIBRY design system$". The commit cannot contain its own final hash.
+- Push status: NOT PUSHED; remote storage incident remains unresolved.
+- Next: Stage 4 authentication/session architecture only after separate authorization, using mock or disposable configuration and preserving existing security checks. No Stage 4 work begun.

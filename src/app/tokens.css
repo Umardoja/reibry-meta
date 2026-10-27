@@ -1,0 +1,48 @@
+/* Selected tokens from original REIBRY globals.css, commit 76d3494465bab43a5051498e90b9a486a65312b9. Original contributors retain attribution. */
+:root {
+  /* Brand */
+  --primary:          #005145;
+  --primary-mid:      #0F6B5C;
+  --primary-sec:      #167D6B;
+  --accent-mint:      #7CC7B8;
+
+  /* Surface */
+  --bg:               #f0fcf8;
+  --surface:          #ffffff;
+  --surface-low:      #eaf6f3;
+  --surface-mid:      #e4f1ed;
+  --surface-high:     #d9e5e2;
+  --surface-dim:      #d0ddd9;
+
+  /* Text */
+  --on-surface:       #131e1c;
+  --on-surface-var:   #3f4946;
+  --outline:          #6f7976;
+  --outline-var:      #bec9c5;
+
+  /* Semantic */
+  --border-hair:      rgba(22,33,31,.06);
+  --border-focus:     rgba(15,107,92,.12);
+  --shadow-card:      0 1px 2px rgba(11,61,53,.03), 0 2px 6px rgba(11,61,53,.04);
+  --shadow-float:     0 4px 16px rgba(11,61,53,.06), 0 1px 2px rgba(11,61,53,.02);
+  --shadow-elevated:  0 8px 24px rgba(11,61,53,.12), 0 2px 6px rgba(11,61,53,.05);
+
+  /* Spacing scale: 4 8 12 16 24 32 48 */
+  --sp-xs:  4px;
+  --sp-sm:  8px;
+  --sp-md:  12px;
+  --sp-lg:  16px;
+  --sp-xl:  24px;
+  --sp-2xl: 32px;
+  --sp-3xl: 48px;
+
+  --gutter: 16px;
+  --nav-h:  68px;
+
+  /* Radius */
+  --r-sm:  8px;
+  --r-md:  12px;
+  --r-lg:  16px;
+  --r-xl:  20px;
+}
+:root { --error: #9a1212; --warning: #785515; --success: var(--primary-mid); --font-sans: Geist, Inter, system-ui, sans-serif; }

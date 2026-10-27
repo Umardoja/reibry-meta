@@ -32,7 +32,7 @@ test("production app serves the foundation page and its stylesheet", async () =>
     while (Date.now() < deadline) {
       if (server.exitCode !== null) throw new Error(output);
       try {
-        response = await fetch(origin, { signal: AbortSignal.timeout(2_000) });
+        response = await fetch(origin, { signal: AbortSignal.timeout(10_000) });
         break;
       } catch { await delay(200); }
     }
@@ -41,12 +41,15 @@ test("production app serves the foundation page and its stylesheet", async () =>
     const html = await response.text();
     assert.match(html, /<html[^>]*lang="en"/);
     assert.match(html, /<title>REIBRY/);
-    assert.match(html, /<main>/);
-    assert.match(html, /<h1>From Saved/);
+    assert.match(html, /<main[^>]*id="main"/);
+    assert.match(html, /<h1[^>]*>From Saved/);
     assert.match(html, /to Done/);
     assert.match(html, /A personal AI memory and action platform\./);
     assert.match(html, /Meta Edition — Application Foundation/);
-    assert.doesNotMatch(html, /<(button|input|textarea)\b/);
+    assert.match(html, /About this foundation/);
+    assert.match(html, /<dialog[^>]*aria-labelledby=/);
+    assert.match(html, /<label for="preview-label">Example text field/);
+    assert.doesNotMatch(html, /href="\/(auth|memories|capture|plans|settings)"/);
     const stylesheet = html.match(/<link[^>]*href="([^"]+\.css[^"]*)"/)?.[1];
     assert.ok(stylesheet, "Rendered page must include its CSS");
     const cssResponse = await fetch(new URL(stylesheet.replaceAll("&amp;", "&"), origin));

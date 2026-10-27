@@ -6,20 +6,20 @@ A personal AI memory and action platform, developed incrementally for the Meta G
 
 ## Current milestone
 
-Stage 2 adds a minimal Next.js App Router application with React, TypeScript, ESLint, and a responsive starter page. It is a foundation screen, not a working AI product.
+Stage 3 adds REIBRY's shared visual foundation to the independent Stage 2 Next.js app: brand and semantic tokens, typography conventions, spacing, surfaces, cards, button variants, labeled inputs, skeleton styling, a presentation-only shell and an accessible dialog.
 
-The page uses a small selection of the original REIBRY green/mint color values. Its layout and CSS are newly authored for this milestone. No source assets, full design system, application services, or private data were imported.
+The root page is a development foundation. Its About button opens a real explanatory dialog. The text field is an explicitly labeled, unsaved UI preview; the loading sample is not a network request. Navigation points only to the root and an existing page section.
 
 ## Run locally
 
-Use Node.js 22.18 or newer and npm. Validation uses Node.js 24.20.0 and npm 11.19.0.
+Use Node.js 22.18 or newer and npm. Validation uses Node.js 24.20.0 and npm 11.19.0 on Windows.
 
 ~~~sh
 npm ci
 npm run dev -- --hostname 127.0.0.1
 ~~~
 
-Open http://127.0.0.1:3000. No environment variables or backend services are required for this stage.
+Open http://127.0.0.1:3000. No environment variables or backend services are required.
 
 ~~~sh
 npm run lint
@@ -29,24 +29,26 @@ npm test
 npm start -- --hostname 127.0.0.1
 ~~~
 
-The typecheck command generates Next.js route types before running TypeScript. Next.js generates next-env.d.ts locally; it stays ignored, along with node_modules, .next, and incremental TypeScript output. Plain CSS and system fonts avoid extra styling dependencies and external font requests.
+Build before running the production HTTP smoke test. It starts an isolated localhost server, checks rendered content, UI markup, stylesheet delivery and missing-route behavior, then stops the server. Next.js generates ignored next-env.d.ts locally. Dependencies, .next and TypeScript build output remain ignored.
 
-## Provenance and scope
+## Design provenance
 
-This edition builds on the existing September REIBRY application. The dependency versions, strict TypeScript configuration approach, ESLint presets, and selected brand colors are derived from source commit 76d3494465bab43a5051498e90b9a486a65312b9. Original REIBRY contributors retain attribution and applicable rights. See PREEXISTING_WORK.md and docs/meta/MIGRATION_LOG.md.
+The original September REIBRY source is 76d3494465bab43a5051498e90b9a486a65312b9. The Stage 3 inventory and dependency map are in docs/meta/DESIGN_SYSTEM.md; PREEXISTING_WORK.md and docs/meta/MIGRATION_LOG.md preserve the wider history.
 
-Authentication, Supabase integration, Memories, Capture, retrieval, conversational Home, Plans, Ready Packs, Meta API calls, and action execution are not implemented here. No production service is connected.
+Selected tokens and styles come from the original globals.css. The inline brain mark comes from components/design/icons.tsx. The shell, navigation and UI primitives adapt the original presentation conventions. The modal replaces the source portal with native dialog behavior plus explicit keyboard wrapping. These are inherited UI and adaptation work, not new Meta AI functionality.
 
-Stage 3 may selectively port shared styling and reusable UI primitives after a separate scope and permission review. It must not introduce application features or backend integrations.
+Original REIBRY contributors retain attribution and applicable rights. No publication license is inferred. No private or binary assets were copied. Geist/Inter/system-ui remains the typography stack, but the local Geist binary was omitted because its accompanying license was not verified; system fallback is a known fidelity limitation.
 
-## Local-only release status
+## Scope and release status
 
-Stage 1 and Stage 2 remain local. The earlier remote LFS storage incident remains unresolved; no push is authorized. The local, untracked recovery report is not a release artifact. Do not publish inherited code or assets without appropriate permission.
+No authentication, Supabase, API routes, Memories, Capture, retrieval, Plans, Ready Packs, native sessions, PWA registration or AI integration is present. No new package was added in Stage 3. Only the preview and dialog are client components; the application shell remains presentation-only.
 
-## Validation
+All milestones remain local. The earlier remote LFS incident is unresolved. No push or remote LFS operation is authorized; the untracked recovery report is not a release artifact.
 
-Stage 2 passed lint, typecheck, a production Turbopack build, and the production HTTP smoke test on Windows. The smoke test starts an isolated localhost server after a build, verifies root-page text/landmarks, stylesheet delivery, and a missing-route 404, then stops it. Run npm run build before npm test.
+Stage 4 should cover authentication and session architecture only, with separate authorization, newly provisioned disposable configuration and isolated tests. Do not connect production or introduce later-stage features.
 
-The page uses semantic HTML, an English document language, high-contrast text, fluid typography, and wrapping layout. No interactive controls or animation are present. Browser screenshot and assistive-technology testing have not been performed.
+## Validation notes
 
-Installation reported a deprecation warning for the source-pinned ESLint 9.39.5 and an unapproved transitive unrs-resolver install script. No extra scripts were approved; all listed validation commands passed with the installed packages. No dependency security audit was run.
+The migration log records exact Stage 3 command and browser results. Browser QA uses the production build at 390px, 430px and 1440px, with keyboard navigation and dialog checks. Screen-reader testing, physical-device safe areas and exact licensed-font rendering remain outside this verification.
+
+The source-pinned ESLint 9.39.5 deprecation warning and unapproved transitive unrs-resolver install script from Stage 2 remain unchanged. No dependency upgrades or script approvals were made in Stage 3.
