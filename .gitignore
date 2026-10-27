@@ -1,0 +1,47 @@
+# Dependencies and generated output
+node_modules/
+.next/
+out/
+dist/
+build/
+coverage/
+.turbo/
+.vercel/
+*.tsbuildinfo
+next-env.d.ts
+# Environments and credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+credentials*.json
+secrets/
+# Private data, sessions, and local artifacts
+private/
+sessions/
+.auth/
+playwright/.auth/
+*.db
+*.sqlite
+*.sqlite3
+*.dump
+*.backup
+*.log
+test-results/
+playwright-report/
+demo-output/
+design-reference/
+# Native build artifacts
+.gradle/
+android/.gradle/
+android/local.properties
+*.jks
+*.keystore
+# Editor and OS files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
