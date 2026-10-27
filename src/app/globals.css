@@ -1,0 +1,105 @@
+/* Palette adapted from the original REIBRY src/app/globals.css.
+   Source commit: 76d3494465bab43a5051498e90b9a486a65312b9.
+   Original REIBRY contributors retain attribution; layout authored for Stage 2. */
+:root {
+  color-scheme: light;
+  --primary: #005145;
+  --background: #f0fcf8;
+  --surface: #ffffff;
+  --text: #131e1c;
+  --muted: #3f4946;
+  --mint: #7cc7b8;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  color: var(--text);
+  background: var(--background);
+  font-family: "Segoe UI", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.foundation {
+  width: min(100%, 1120px);
+  min-height: 100svh;
+  margin-inline: auto;
+  padding: clamp(24px, 5vw, 64px);
+  display: flex;
+  flex-direction: column;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--primary);
+  font-size: 14px;
+  font-weight: 750;
+  letter-spacing: .16em;
+}
+
+.brand-mark {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border: 1px solid var(--mint);
+  border-radius: 12px;
+  background: var(--surface);
+  font-size: 26px;
+  letter-spacing: -.06em;
+}
+
+main { flex: 1; padding-block: clamp(64px, 12vh, 128px); }
+
+.edition {
+  margin: 0 0 28px;
+  color: var(--primary);
+  font-size: .875rem;
+  font-weight: 600;
+  line-height: 1.6;
+}
+
+h1 {
+  margin: 0;
+  color: var(--primary);
+  font-size: clamp(3.25rem, 9vw, 7rem);
+  font-weight: 650;
+  line-height: 1.03;
+  letter-spacing: -.055em;
+}
+
+.period { color: #167d6b; }
+
+.description {
+  max-width: 30rem;
+  margin: 28px 0 0;
+  color: var(--muted);
+  font-size: clamp(1.0625rem, 2.3vw, 1.375rem);
+  line-height: 1.6;
+}
+
+.foundation-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-top: 48px;
+  padding-top: 24px;
+  border-top: 1px solid #bec9c5;
+  max-width: 30rem;
+}
+
+.foundation-note p { margin: 0; font-size: .875rem; line-height: 1.7; color: var(--muted); }
+.status-dot { width: 7px; height: 7px; margin-top: 8px; flex-shrink: 0; border-radius: 50%; background: var(--primary); }
+
+footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 12px 24px;
+  color: var(--muted);
+  font-size: .75rem;
+  line-height: 1.6;
+}
