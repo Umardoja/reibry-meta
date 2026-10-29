@@ -10,6 +10,7 @@ import { createUserSupabaseClient } from "../supabase/server.ts";
 import { handleAskRequest, askPrivateHeaders } from "./handler.ts";
 import { createMetaReasoner } from "./meta/grounded-reasoning.ts";
 import { createInMemoryAskRateLimiter } from "./rate-limit.ts";
+import { createSupabaseActionRepository } from "../actions/supabase-repository.ts";
 
 const limiter = createInMemoryAskRateLimiter();
 export async function askApiRoute(request: Request) {
@@ -22,7 +23,8 @@ export async function askApiRoute(request: Request) {
     const { client } = createUserSupabaseClient(jar, signal, origin); const { data, error } = await client.auth.getUser();
     if (error) { if (missingSession(error)) throw new AuthFailure("AUTH_REQUIRED"); throw providerFailure(error); }
     if (!data.user?.id) throw new AuthFailure("AUTH_REQUIRED");
-    return { userId: data.user.id, repository: createSupabaseMemoryRepository(client, data.user.id) };
+    return { userId: data.user.id, repository: createSupabaseMemoryRepository(client, data.user.id),
+      actionRepository: createSupabaseActionRepository(client, data.user.id) };
   }, createMetaReasoner(), limiter, origin);
   const response = NextResponse.json({ data: result.data, error: result.error }, { status: result.status, headers: askPrivateHeaders });
   return applyAuthCookies(response, result.status === 401 ? jar.clear() : result.error ? [] : jar.writes(), origin.startsWith("https:"));

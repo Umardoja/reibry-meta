@@ -5,11 +5,14 @@ import { MetaClientError, type MetaFailureCode } from "./meta/client.ts";
 import { MetaContractError, parseAskBody, type AskResponse } from "./meta/contracts.ts";
 import { noEvidenceAnswer, type MetaReasoner } from "./meta/grounded-reasoning.ts";
 import type { AskRateLimiter } from "./rate-limit.ts";
+import { proposalInputs, proposalView } from "../actions/contracts.ts";
+import { ActionRepositoryFailure, type ActionRepository } from "../actions/repository.ts";
 
-export type AskContext = { userId: string; repository: MemoryRepository };
+export type AskContext = { userId: string; repository: MemoryRepository; actionRepository: ActionRepository };
 export type AskContextFactory = (signal: AbortSignal) => Promise<AskContext>;
 type FailureCode = "VALIDATION_ERROR" | "AUTH_REQUIRED" | "AUTH_NOT_CONFIGURED" | "AUTH_TIMEOUT" | "STORAGE_UNAVAILABLE" |
-  "AI_NOT_CONFIGURED" | "AI_TIMEOUT" | "AI_ACCESS_DENIED" | "AI_BILLING_REQUIRED" | "AI_RATE_LIMITED" | "AI_UNAVAILABLE" | "AI_INVALID_RESPONSE";
+  "AI_NOT_CONFIGURED" | "AI_TIMEOUT" | "AI_ACCESS_DENIED" | "AI_BILLING_REQUIRED" | "AI_RATE_LIMITED" | "AI_UNAVAILABLE" | "AI_INVALID_RESPONSE" |
+  "ACTION_STORAGE_UNAVAILABLE";
 export type AskResult = { status: number; data: AskResponse | null; error: { code: FailureCode; message: string } | null };
 export const askPrivateHeaders = { "Cache-Control": "private, no-store, max-age=0", Vary: "Cookie", "Referrer-Policy": "no-referrer", Pragma: "no-cache" };
 const messages: Record<FailureCode, string> = {
@@ -19,6 +22,7 @@ const messages: Record<FailureCode, string> = {
   AI_TIMEOUT: "Muse Spark took too long to respond.", AI_ACCESS_DENIED: "Meta credentials or model access were rejected.",
   AI_BILLING_REQUIRED: "Meta billing or credits require attention.", AI_RATE_LIMITED: "Ask REIBRY is temporarily rate limited. Try again shortly.",
   AI_UNAVAILABLE: "Muse Spark is temporarily unavailable.", AI_INVALID_RESPONSE: "Muse Spark returned an answer that could not be safely verified.",
+  ACTION_STORAGE_UNAVAILABLE: "Action proposals could not be saved safely.",
 };
 function failure(code: FailureCode): AskResult {
   const status = code === "AUTH_REQUIRED" ? 401 : code === "VALIDATION_ERROR" ? 400 : code === "AI_RATE_LIMITED" ? 429 :
@@ -44,6 +48,7 @@ function metaFailure(code: MetaFailureCode): FailureCode {
 function mapped(error: unknown): FailureCode {
   if (error instanceof MetaContractError) return "VALIDATION_ERROR";
   if (error instanceof MetaClientError) return metaFailure(error.code);
+  if (error instanceof ActionRepositoryFailure) return "ACTION_STORAGE_UNAVAILABLE";
   if (error instanceof MemoryRepositoryFailure) return "STORAGE_UNAVAILABLE";
   if (error instanceof AuthFailure) {
     const code = authErrorCode(error); return ["AUTH_REQUIRED", "AUTH_NOT_CONFIGURED", "AUTH_TIMEOUT"].includes(code) ? code as FailureCode : "STORAGE_UNAVAILABLE";
@@ -58,11 +63,16 @@ export async function handleAskRequest(request: Request, factory: AskContextFact
   try {
     return await bounded(async signal => {
       const { question } = parseAskBody(await readJson(request, signal));
-      const context = await factory(signal); if (context.repository.ownerId !== context.userId) throw new AuthFailure("AUTH_REQUIRED");
+      const context = await factory(signal); if (context.repository.ownerId !== context.userId || context.actionRepository.ownerId !== context.userId) throw new AuthFailure("AUTH_REQUIRED");
       const retrieval = await searchOwnedMemories(context.repository, question, 6);
       if (retrieval.state === "no-match") return { status: 200, data: noEvidenceAnswer(), error: null };
       if (!limiter.consume(context.userId)) return failure("AI_RATE_LIMITED");
-      return { status: 200, data: await reasoner(question, retrieval.items, signal), error: null };
+      const answer = await reasoner(question, retrieval.items, signal);
+      const inputs = proposalInputs(answer.proposed_next_steps, new Set(retrieval.items.map(item => item.memoryId)));
+      if (inputs.length && !answer.model) throw new ActionRepositoryFailure("INVALID_STATE");
+      const persisted = inputs.length ? await context.actionRepository.createProposals(inputs, `meta:${answer.model}`) : [];
+      if (persisted.length !== inputs.length) throw new ActionRepositoryFailure("STORAGE_UNAVAILABLE");
+      return { status: 200, data: { ...answer, action_proposals: persisted.map(proposalView) }, error: null };
     }, timeout);
   } catch (error) { return failure(mapped(error)); }
 }

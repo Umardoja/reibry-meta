@@ -10,6 +10,7 @@ import { createInMemoryAskRateLimiter } from "../src/lib/ai/rate-limit.ts";
 import type { Memory } from "../src/lib/memory/contracts.ts";
 import type { RetrievalItem } from "../src/lib/retrieval/contracts.ts";
 import { createInMemoryMemoryRepository, createMemoryTestState } from "./support/in-memory-memory-repository.ts";
+import { createActionTestState, createInMemoryActionRepository } from "./support/in-memory-action-repository.ts";
 
 const origin = "http://localhost:3000"; const userA = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"; const userB = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const memoryId = "00000000-0000-4000-8000-000000000001";
@@ -42,7 +43,9 @@ function stored(overrides: Partial<Memory> = {}): Memory {
     createdAt: "2026-10-29T10:00:00.000Z", updatedAt: "2026-10-29T10:00:00.000Z", ...overrides };
 }
 function context(memories: Memory[], userId = userA): AskContextFactory {
-  const repository = createInMemoryMemoryRepository(userId, createMemoryTestState(memories)); return async () => ({ userId, repository });
+  const repository = createInMemoryMemoryRepository(userId, createMemoryTestState(memories));
+  const actionRepository = createInMemoryActionRepository(userId, createActionTestState(memories.map(item => [item.id, item.userId])));
+  return async () => ({ userId, repository, actionRepository });
 }
 
 test("Meta request uses current Responses fields, Standard Muse Spark, store=false and strict schema", () => {
@@ -142,18 +145,20 @@ test("reasoner returns validated IDs and rejects an unknown model citation", asy
     ("Launch?", [retrieval()], new AbortController().signal), (error: unknown) => error instanceof MetaClientError && error.code === "META_INVALID_RESPONSE");
 });
 
-test("ask handler retrieves only owner evidence and never mutates persistence", async () => {
+test("ask handler retrieves only owner evidence and persists only grounded proposals", async () => {
   const memories = [stored(), stored({ id: "00000000-0000-4000-8000-000000000002", userId: userB, rawText: "Other launch secret" })];
-  let received: RetrievalItem[] = []; const reasoner: MetaReasoner = async (_question, items) => { received = items; return { ...answer(), provider_called: true, model: META_MODEL, usage: null, citations: [] }; };
+  let received: RetrievalItem[] = []; const reasoner: MetaReasoner = async (_question, items) => { received = items; return { ...answer(), provider_called: true, model: META_MODEL, usage: null, citations: [], action_proposals: [] }; };
   const result = await handleAskRequest(askRequest(), context(memories), reasoner, createInMemoryAskRateLimiter(), origin);
   assert.equal(result.status, 200); assert.deepEqual(received.map(item => item.memoryId), [memoryId]);
+  assert.equal(result.data?.action_proposals.length, 1); assert.deepEqual(result.data?.action_proposals[0]?.supportingMemoryIds, [memoryId]);
   assert.equal(createInMemoryMemoryRepository(userA, createMemoryTestState(memories)).ownerId, userA);
 });
 
 test("no matching evidence returns an honest local result without provider or budget use", async () => {
   let called = false; const limiter = { consume: () => { called = true; return true; } };
   const result = await handleAskRequest(askRequest("quantum zebras"), context([stored()]), async () => { called = true; throw new Error(); }, limiter, origin);
-  assert.equal(result.status, 200); assert.equal(result.data?.provider_called, false); assert.equal(result.data?.evidence_status, "insufficient"); assert.equal(called, false);
+  assert.equal(result.status, 200); assert.equal(result.data?.provider_called, false); assert.equal(result.data?.evidence_status, "insufficient");
+  assert.deepEqual(result.data?.action_proposals, []); assert.equal(called, false);
 });
 
 test("anonymous, expired, cross-origin and malformed requests fail closed", async () => {

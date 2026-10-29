@@ -6,7 +6,7 @@ A personal AI memory and action platform, developed incrementally for the Meta G
 
 ## Current milestone
 
-Stage 8 adds a genuine server-only Meta Model API integration over Stage 7 owner-scoped evidence. The protected Ask REIBRY flow retrieves up to six matching Memories, sends a redacted and bounded evidence packet to Standard `muse-spark-1.3`, validates strict structured output and rejects citations that were not supplied. Missing evidence skips the provider entirely. Authentication and database access remain disabled by default. **Real Supabase persistence and live Meta inference are NOT VERIFIED.**
+Stage 9 adds user-reviewed, persistent Action Cards to Stage 8's grounded suggestions. Valid suggestions become inert 24-hour proposals only through the authenticated Ask flow; the user must explicitly save one before a transaction creates an idempotent confirmed planning card. A saved card is not executed or completed. Authentication and database access remain disabled by default. **Real Supabase persistence and live Meta inference are NOT VERIFIED.**
 
 The root page remains an honest development foundation. Its About dialog and unsaved text-field preview are UI demonstrations. Sign in leads to the implemented authentication screen; future product features are absent.
 
@@ -53,23 +53,25 @@ Authenticated `GET /api/memories/search?q=...&limit=...` scans at most the owner
 
 Authenticated `POST /api/ai/ask` accepts only a question up to 500 characters. It retrieves six owner-bound results, removes URL credentials/query/fragment data, caps evidence at 12,000 bytes and calls `POST https://api.meta.ai/v1/responses` with `store=false`, no tools, at most 800 output tokens and strict `text.format` JSON Schema. Every returned citation and suggested-step reference must be a supplied Memory ID. The UI labels suggestions as unexecuted. See [Meta integration](docs/meta/META_INTEGRATION.md).
 
+Valid next-step suggestions are persisted through a fixed database function as owner-bound, inert proposals. `GET /api/actions/proposals` lists reviewable proposals; body-free same-origin `POST` routes confirm or reject an owned proposal. `GET /api/actions` and `/api/actions/{id}` expose only confirmed planning cards. Confirmation locks the proposal and relies on a unique proposal/card relation, so retries return the same card. Direct authenticated table writes are denied. See [Action architecture](docs/meta/ACTION_ARCHITECTURE.md) and [verification plan](docs/meta/ACTION_VERIFICATION.md). The local migration is not applied anywhere.
+
 Server configuration names only: `MODEL_API_KEY` and `META_RATE_LIMIT_MODE=in-memory`. The key is never public. The explicit rate-limit setting opts into a five-provider-requests-per-minute, per-user, per-process gate; multi-instance deployment requires a shared limiter before release. The optional `npm run verify:meta` command is disabled unless `META_LIVE_VERIFY=I_AUTHORIZE_BILLABLE_META_TEST` is supplied after owner approval. See [live verification](docs/meta/META_LIVE_VERIFICATION.md).
 
 ## Provenance
 
 This edition builds on the original September REIBRY application at source commit 76d3494465bab43a5051498e90b9a486a65312b9. PREEXISTING_WORK.md and docs/meta/MIGRATION_LOG.md preserve the migration history. Stages 1–3 remain intact.
 
-Stage 3 adapted selected original globals.css tokens, the inline brain mark, shell and UI conventions; details are in docs/meta/DESIGN_SYSTEM.md. Stage 4 adapted auth and Supabase session conventions. Stage 5 adapts the original Memory DTO, owner-bound store, Supabase query ordering, API routes and owner RLS. Stage 6 adapts capture and source-preservation patterns. Stage 7 adapts bounded tokenization, weighted literal evidence and stable ranking. These remain inherited foundations. Stage 8's Muse Spark adapter, structured evidence/citation gate, retry policy, synthetic live verifier and Ask REIBRY experience are new Meta Hackathon development.
+Stage 3 adapted selected original globals.css tokens, the inline brain mark, shell and UI conventions; details are in docs/meta/DESIGN_SYSTEM.md. Stage 4 adapted auth and Supabase session conventions. Stage 5 adapts the original Memory DTO, owner-bound store, Supabase query ordering, API routes and owner RLS. Stage 6 adapts capture and source-preservation patterns. Stage 7 adapts bounded tokenization, weighted literal evidence and stable ranking. These remain inherited foundations. Stage 8's Muse Spark adapter, structured evidence/citation gate, retry policy, synthetic live verifier and Ask REIBRY experience are new Meta Hackathon development. Stage 9's proposal ledger, transactionally confirmed Action Cards and review UI are also new Meta Hackathon development.
 
 Original REIBRY contributors retain attribution and applicable rights. No publication license is inferred. No private or binary assets were copied. The original font stack uses its system fallback because a local font asset's license was not verified.
 
 ## Scope and release status
 
-No profiles, onboarding tables, roles, admin model, password recovery, MFA, OAuth, native sessions, arbitrary-page previewing, transcripts, file capture, embeddings, semantic/vector search, Plans, Ready Packs, conversation persistence or action execution are included. Stage 8 adds no dependency; direct dependencies remain `@supabase/ssr` 0.12.7, `@supabase/supabase-js` 2.116.0 and `server-only` 0.0.1.
+No profiles, onboarding tables, roles, admin model, password recovery, MFA, OAuth, native sessions, arbitrary-page previewing, transcripts, file capture, embeddings, semantic/vector search, Plans, Ready Packs, conversation persistence, scheduled work or external action execution are included. Stage 9 adds no dependency; direct dependencies remain `@supabase/ssr` 0.12.7, `@supabase/supabase-js` 2.116.0 and `server-only` 0.0.1.
 
 All milestones remain local. The earlier remote LFS incident is unresolved. No push or remote LFS operation is authorized. The existing untracked recovery report is preserved and is not a release artifact.
 
-The Meta adapter is implemented, but no billable request was authorized or executed. Model access, API-key validity and billing remain unverified. Stage 9 should build only a confirmation ledger and idempotent action proposal boundary; suggestions must remain inert until a later explicitly authorized execution milestone.
+The Meta adapter is implemented, but no billable request was authorized or executed. Model access, API-key validity and billing remain unverified. Action proposals and cards are implemented locally, but the migration has not been applied to a disposable database. Stage 10 should verify the synthetic end-to-end path in explicitly approved disposable Supabase and Meta environments; it must not add external execution merely to demonstrate persistence.
 
 ## Validation limits
 

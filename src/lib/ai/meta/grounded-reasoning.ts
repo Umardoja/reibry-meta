@@ -43,7 +43,7 @@ export function createMetaReasoner(dependencies: MetaClientDependencies = defaul
     try { answer = validateGroundedAnswer(JSON.parse(outputText(result.body)), evidence); }
     catch (error) { if (error instanceof MetaClientError) throw error; throw new MetaClientError("META_INVALID_RESPONSE"); }
     const byId = new Map(items.map(item => [item.memoryId, item]));
-    return { ...answer, provider_called: true, model: META_MODEL, usage: result.usage,
+    return { ...answer, provider_called: true, model: META_MODEL, usage: result.usage, action_proposals: [],
       citations: answer.cited_memory_ids.map(id => { const item = byId.get(id)!; return { memory_id: id, title: item.displayTitle,
         memory_href: item.memoryHref, evidence_limit: item.sourceType === "text" ? "stored-note" as const : "metadata-only-link" as const }; }) };
   };
@@ -51,5 +51,5 @@ export function createMetaReasoner(dependencies: MetaClientDependencies = defaul
 
 export function noEvidenceAnswer(): AskResponse {
   return { answer: "No saved Memory supports this question yet. Capture relevant evidence or ask using terms that appear in your Memories.",
-    evidence_status: "insufficient", cited_memory_ids: [], proposed_next_steps: [], provider_called: false, model: null, usage: null, citations: [] };
+    evidence_status: "insufficient", cited_memory_ids: [], proposed_next_steps: [], provider_called: false, model: null, usage: null, citations: [], action_proposals: [] };
 }

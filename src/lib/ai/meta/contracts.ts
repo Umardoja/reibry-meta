@@ -1,5 +1,6 @@
 // Stage 8 Meta-specific contracts. Model output is untrusted until this module validates it.
 import type { RetrievalItem } from "../../retrieval/contracts.ts";
+import type { ActionProposalView } from "../../actions/contracts.ts";
 
 export const ASK_QUESTION_MAX = 500;
 export const META_EVIDENCE_MAX = 6;
@@ -41,6 +42,7 @@ export type AskResponse = GroundedModelAnswer & {
   model: typeof META_MODEL | null;
   usage: MetaUsage | null;
   citations: Array<{ memory_id: string; title: string; memory_href: string; evidence_limit: "stored-note" | "metadata-only-link" }>;
+  action_proposals: ActionProposalView[];
 };
 
 export class MetaContractError extends Error {}
