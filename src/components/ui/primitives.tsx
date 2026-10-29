@@ -7,8 +7,8 @@ export function Container({ className = "", ...props }: HTMLAttributes<HTMLDivEl
 export function PageContainer({ className = "", ...props }: HTMLAttributes<HTMLDivElement>) {
   return <div className={"page-container " + className} {...props} />;
 }
-export function StatePanel({ title, children, className = "" }: HTMLAttributes<HTMLDivElement> & { title: string }) {
-  return <div className={"state-panel " + className} role="status"><h2>{title}</h2>{children}</div>;
+export function StatePanel({ title, children, className = "", tone = "neutral" }: HTMLAttributes<HTMLDivElement> & { title?: string; tone?: "neutral" | "error" }) {
+  return <div className={`state-panel state-panel-${tone} ${className}`} role={tone === "error" ? "alert" : "status"}>{title && <h2>{title}</h2>}{children}</div>;
 }
 export function Card({ className = "", ...props }: HTMLAttributes<HTMLDivElement>) {
   return <div className={"card " + className} {...props} />;

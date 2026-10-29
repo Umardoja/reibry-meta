@@ -1,3 +1,5 @@
-import { DeferredRoute } from "@/components/parity/deferred-route";
+import { redirect } from "next/navigation";
+import { verifiedPageUser } from "@/lib/auth/server";
+import { LifeWorkspace } from "@/components/life/life-workspace";
 export const dynamic = "force-dynamic";
-export default function LifePage() { return <DeferredRoute next="/life" eyebrow="Life chronology" title="What’s happening in your world?" description="Events, deadlines, goals, and meaningful dates form the original Life timeline." dependency="The owner-scoped Life repository and parsing API are not present yet. Adding events is disabled rather than storing them somewhere unsafe." links={[{ href: "/life/manage", label: "Manage Life" }]} />; }
+export default async function LifePage(){let verified=false;try{verified=!!await verifiedPageUser();}catch{}if(!verified)redirect("/auth?next=/life");return <LifeWorkspace/>;}

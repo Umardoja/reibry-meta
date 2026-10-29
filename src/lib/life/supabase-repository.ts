@@ -1,0 +1,14 @@
+import "server-only";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { decodeLifeContext, serializeLifeContext, type LifeUpdate, type NewLifeContext } from "./contracts.ts";
+import { LifeRepositoryFailure, type LifeRepository } from "./repository.ts";
+const columns="id,user_id,type,title,description,start_date,end_date,status,confidence,created_at,updated_at";
+function fail(error: unknown): never { void error; throw new LifeRepositoryFailure("STORAGE_UNAVAILABLE"); }
+function decode(value: unknown) { try { return serializeLifeContext(decodeLifeContext(value)); } catch (error) { return fail(error); } }
+export function createSupabaseLifeRepository(client: SupabaseClient, ownerId: string): LifeRepository { return { ownerId,
+  async createUnique(input: NewLifeContext,dedupeKey:string) { const row={user_id:ownerId,type:input.type,title:input.title,description:input.description,start_date:input.startDate,end_date:input.endDate,status:input.status,confidence:input.confidence,dedupe_key:dedupeKey}; const created=await client.from("life_contexts").insert(row).select(columns).single(); if (!created.error && created.data) return {context:decode(created.data),duplicate:false}; if (created.error?.code!=="23505") return fail(created.error); const existing=await client.from("life_contexts").select(columns).eq("user_id",ownerId).eq("dedupe_key",dedupeKey).maybeSingle(); if (existing.error || !existing.data) return fail(existing.error); return {context:decode(existing.data),duplicate:true}; },
+  async list() { const {data,error}=await client.from("life_contexts").select(columns).eq("user_id",ownerId).order("start_date",{ascending:true,nullsFirst:false}).order("created_at",{ascending:false}); if(error) return fail(error); return (data||[]).map(decode); },
+  async read(id) { const {data,error}=await client.from("life_contexts").select(columns).eq("user_id",ownerId).eq("id",id).maybeSingle(); if(error) return fail(error); if(!data) throw new LifeRepositoryFailure("NOT_FOUND"); return decode(data); },
+  async update(id,input:LifeUpdate) { const row:Record<string,unknown>={}; if(input.type!==undefined)row.type=input.type;if(input.title!==undefined)row.title=input.title;if(input.description!==undefined)row.description=input.description;if(input.startDate!==undefined)row.start_date=input.startDate;if(input.endDate!==undefined)row.end_date=input.endDate;if(input.status!==undefined)row.status=input.status; const {data,error}=await client.from("life_contexts").update(row).eq("user_id",ownerId).eq("id",id).select(columns).maybeSingle(); if(error)return fail(error);if(!data)throw new LifeRepositoryFailure("NOT_FOUND");return decode(data); },
+  async delete(id) { const {data,error}=await client.from("life_contexts").delete().eq("user_id",ownerId).eq("id",id).select("id").maybeSingle();if(error)return fail(error);if(!data)throw new LifeRepositoryFailure("NOT_FOUND"); }
+}; }

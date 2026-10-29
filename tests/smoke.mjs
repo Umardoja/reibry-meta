@@ -88,6 +88,23 @@ test("production app serves the restored REIBRY shell and its stylesheet", async
     assert.equal((await actions.json()).error.code, "AUTH_REQUIRED");
     const proposals = await fetch(origin + "/api/actions/proposals");
     assert.equal(proposals.status, 401);
+    const life = await fetch(origin + "/api/life");
+    assert.equal(life.status, 401);
+    assert.equal((await life.json()).error.code, "AUTH_REQUIRED");
+    const lifeCreate = await fetch(origin + "/api/life/create", {
+      method: "POST", headers: { Origin: origin, "Sec-Fetch-Site": "same-origin", "Content-Type": "application/json" },
+      body: JSON.stringify({ text: "must not persist without a session", timezone: "UTC" }),
+    });
+    assert.equal(lifeCreate.status, 401);
+    const lifeUpdate = await fetch(origin + "/api/life/10000000-0000-4000-8000-000000000001", {
+      method: "PATCH", headers: { Origin: origin, "Sec-Fetch-Site": "same-origin", "Content-Type": "application/json" },
+      body: JSON.stringify({ title: "must not update" }),
+    });
+    assert.equal(lifeUpdate.status, 401);
+    const lifeDelete = await fetch(origin + "/api/life/10000000-0000-4000-8000-000000000001", {
+      method: "DELETE", headers: { Origin: origin, "Sec-Fetch-Site": "same-origin" },
+    });
+    assert.equal(lifeDelete.status, 401);
     const confirm = await fetch(origin + "/api/actions/proposals/10000000-0000-4000-8000-000000000001/confirm", {
       method: "POST", headers: { Origin: origin, "Sec-Fetch-Site": "same-origin" },
     });
@@ -107,6 +124,12 @@ test("production app serves the restored REIBRY shell and its stylesheet", async
     const actionsPage = await fetch(origin + "/actions", { redirect: "manual" });
     assert.equal(actionsPage.status, 307);
     assert.match(actionsPage.headers.get("location"), /\/auth\?next=/);
+    const lifePage = await fetch(origin + "/life", { redirect: "manual" });
+    assert.equal(lifePage.status, 307);
+    assert.match(lifePage.headers.get("location"), /\/auth\?next=/);
+    const lifeManagePage = await fetch(origin + "/life/manage", { redirect: "manual" });
+    assert.equal(lifeManagePage.status, 307);
+    assert.match(lifeManagePage.headers.get("location"), /\/auth\?next=/);
     const rejected = await fetch(origin + "/api/auth/sign-in", { method: "POST", headers: { Origin: origin, "Content-Type": "application/json" },
       body: JSON.stringify({ email: "person@example.test", password: "test-only-password" }) });
     assert.equal(rejected.status, 503);

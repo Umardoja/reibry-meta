@@ -2,8 +2,8 @@
 
 ## Stage 11 order
 
-1. **Life foundation:** port typed events, owner repository, migration/RLS, CRUD and the `/life` and `/life/manage` wiring. Today and Plans depend on this chronology.
-2. **Today resurfacing:** port owner-scoped “why now” ranking over actual Memories and Life items, including source explanations and deterministic empty/error states.
+1. **Life foundation — restored in Stage 11A:** typed original contexts, owner repository, local migration/RLS definition, CRUD and the `/life` and `/life/manage` workflows are implemented. Disposable-database RLS and authenticated browser verification remain required; automatic Memory matching is deferred.
+2. **Today resurfacing (Stage 11B):** port owner-scoped “why now” ranking over actual Memories and Life items, including source explanations and deterministic empty/error states.
 3. **Original conversational Home orchestration:** reconnect search, Life intent, planning intent and conversation state while retaining Stage 8 evidence/citation validation.
 4. **Plans:** port Plan contracts, owner storage/RLS, CRUD, intention state and Memory selection. Keep Action Cards distinct, with an explicit user-controlled conversion boundary later.
 5. **Ready Packs:** port guides/checklists only after Plans and retrieval are verified; never infer completion or source evidence.

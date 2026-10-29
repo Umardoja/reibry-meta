@@ -182,3 +182,20 @@
 - Browser/visual boundary: production HTTP smoke verified Home, CSS, navigation and fail-closed protected routes. Windows Chrome was discoverable, but the controller timed out navigating its existing tab to the isolated Stage 10 port and exposed no viewport resize, so fresh 390/430/1440 screenshot parity and authenticated screens remain UNVERIFIED. Pixel-perfect parity is not claimed.
 - Live Supabase and Meta remain unverified. No push, remote, deployment, migration application or LFS operation occurred.
 - Commit message: `port(ui): restore original REIBRY product experience`.
+
+## Stage 11A - Original Life workflows
+
+- Date: 2026-10-29 (Africa/Lagos).
+- Parent: `ec9e66cf85bf6c1bb64b3b301df84cd55d57a2bc` on `feat/original-product-parity`; all prior commits and the untracked Stage 1 recovery report were preserved.
+- Inherited implementation: ported original `src/app/life/**`, Life card presentation, `src/lib/life/management.ts`, Life types/schemas, deterministic parsing/normalization/date behavior, owner-store conventions, Life API routes and the Life portion of the original foundation migration at source commit `76d3494465bab43a5051498e90b9a486a65312b9`.
+- UI: restored “Life chronology”, “What’s happening in your world?”, natural-language Add to Life, Coming up, Needs a date, Manage Life, Upcoming / No date / Past, real Life cards, accessible edit/delete dialogs and the original empty/loading/error organization. No fixture records are used in production.
+- Contracts/storage: retained eight original Life types and four statuses; added strict validation, stable serialization, owner-bound repository, authenticated non-elevated Supabase adapter, deterministic test adapter and owner-scoped idempotent creation.
+- API: restored `GET /api/life`, `POST /api/life/create`, and `GET`/`PATCH`/`DELETE /api/life/[id]`. Session identity is server derived, cross-owner records are hidden, mutation origin/body limits are enforced and responses are private/no-store.
+- Adaptation: the original creation path depended on an AI parser. Stage 11A uses the original deterministic fallback behavior without a provider and reports partial metadata. No model is called. Automatic Memory matching, Today and Plans remain deferred.
+- Schema: added unapplied `20261030000000_life_contexts.sql` with forced owner RLS, column-level update grants, owner/dedupe indexes and composite owner foreign keys for a read-only future `memory_context_matches` relation. No profile/admin/service-role grants were imported. Added rollback-only `supabase/tests/life_rls.sql`; hosted RLS remains **NOT VERIFIED**.
+- Dependencies: none added; package lock unchanged.
+- Verification: focused Life tests PASS (16/16); `npm run lint` PASS; `npm run typecheck` PASS; `npm run build` PASS with the Life pages and API routes in the manifest; `npm test` PASS (125/125, including all 109 previous tests and production HTTP smoke); `git diff --check` PASS. Tests use synthetic data only and do not contact Supabase or Meta.
+- Browser boundary: production HTTP smoke and a fresh Chrome desktop check verified `/life` redirects to `/auth?next=%2Flife`, renders the restored shell/auth layout without visible horizontal overflow, and exposes the correct protected boundary. Authenticated Life UI plus exact 390/430/1440 comparisons remain unverified without an approved disposable session; pixel-perfect parity is not claimed.
+- Meta preservation: Stage 8 reasoning/citation validation and Stage 9 proposal/Action Card modules, routes, migrations and regression tests remain intact.
+- Commit message: `port(life): restore original Life workflows`.
+- Push status: NOT PUSHED; no remote, Git LFS, hosted migration or provider operation authorized.

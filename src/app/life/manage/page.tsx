@@ -1,3 +1,5 @@
-import { DeferredRoute } from "@/components/parity/deferred-route";
+import { redirect } from "next/navigation";
+import { verifiedPageUser } from "@/lib/auth/server";
+import { LifeManager } from "@/components/life/life-manager";
 export const dynamic = "force-dynamic";
-export default function LifeManagePage() { return <DeferredRoute next="/life/manage" eyebrow="Life management" title="Manage your timeline" description="The original screen separates upcoming, undated, and past Life items." dependency="Editing and deletion require the missing Life persistence contract and RLS policies. Those controls remain unavailable until Stage 11." links={[{ href: "/life", label: "Back to Life" }]} />; }
+export default async function LifeManagePage(){let verified=false;try{verified=!!await verifiedPageUser();}catch{}if(!verified)redirect("/auth?next=/life/manage");return <LifeManager/>;}
