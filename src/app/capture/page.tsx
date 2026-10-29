@@ -6,6 +6,6 @@ export const dynamic = "force-dynamic";
 export default async function CapturePage() {
   let verified = false; try { verified = !!await verifiedPageUser(); } catch { /* Fail closed. */ }
   if (!verified) redirect("/auth?next=/capture");
-  return <Container><header className="section-heading"><p className="eyebrow">Source-preserving capture</p><h1>Capture</h1>
-    <p>Save a note or public HTTPS link as an owned Memory. Optional metadata can fail without losing the source.</p></header><CaptureForm /></Container>;
+  return <Container><header className="section-heading"><p className="eyebrow">Capture</p><h1>Save a thought, link, or plan.</h1>
+    <p>REIBRY preserves what you share. Optional link details can fail without losing the original source.</p></header><CaptureForm /></Container>;
 }

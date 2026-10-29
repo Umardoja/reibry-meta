@@ -1,0 +1,3 @@
+import { DeferredRoute } from "@/components/parity/deferred-route";
+export const dynamic = "force-dynamic";
+export default async function PlanDetailPage({ params }: { params: Promise<{ id: string }> }) { const { id } = await params; return <DeferredRoute next={`/plans/${encodeURIComponent(id)}`} eyebrow="Ready Pack" title="Plan details" description="The original plan detail combines saved evidence, a guide, and an explicit checklist." dependency="This Plan identifier cannot be loaded until owner-scoped Plan and Ready Pack repositories are migrated. No placeholder plan data is shown." links={[{ href: "/plans", label: "Back to Plans" }]} />; }

@@ -167,3 +167,18 @@
 - Commit message: `feat(actions): persist user-confirmed memory actions`.
 - Push status: NOT PUSHED; no remote or Git LFS operation authorized.
 - Stage 10 boundary: with explicit approval, apply migrations to an isolated disposable Supabase project, run two-user RLS/concurrency checks, authorize a synthetic Meta smoke request, and record the Ask-to-refresh evidence. Do not use production data or add external tools.
+
+## Stage 10 - Original product experience restoration
+
+- Date: 2026-10-29 (Africa/Lagos).
+- Parent: `eb0bd848c681ae73deb71ae39e8da9fe3e00d6b7`; recovery branch `feat/original-product-parity`. Stages 1–9 and the untracked recovery report were preserved.
+- Inherited presentation: audited and adapted the original `src/app/**`, `src/components/layout/**`, `src/components/design/icons.tsx`, auth/Capture/Memory/Home/Life/Plans components and `globals.css` at `76d3494465bab43a5051498e90b9a486a65312b9`. Original contributor attribution remains; this is parity restoration, not new Meta functionality.
+- Restored: compact original header, page labels, account menu, five-item mobile navigation, centered 430px product frame, conversational Home composition, original route hierarchy, Capture/Memories/Ask headings, Memory detail, Settings, loading/deferred states, safe areas, focus and reduced-motion behavior.
+- Deferred honestly: Today ranking, onboarding persistence, Life CRUD, original Plans and Ready Packs lack secure Meta repositories/APIs and display explicit unavailable states. No fixtures or fake success were introduced.
+- Meta preservation: Stage 8 adapter/Ask endpoint/evidence and citation validation, Stage 9 proposals/confirm/reject/Action Cards, secure auth, Capture hardening and owner-bound persistence remain intact. Action Cards are not renamed as Plans.
+- Assets/dependencies: no dependency or lockfile change. No font, bitmap, PWA asset, binary, LFS object or private data copied; system font fallback remains.
+- Audit artifacts: `PRODUCT_PARITY_AUDIT.md`, `VISUAL_PARITY_RESULTS.md`, and `FEATURE_PARITY_BACKLOG.md` record restored, partial, missing and Meta-specific behavior.
+- Validation: `npm run lint` PASS; `npm run typecheck` PASS; `npm run build` PASS with all original product routes plus every Stage 8/9 API/UI route in the manifest; `npm test` PASS, 109/109; `git diff --check` PASS. The first smoke run correctly failed one obsolete Stage 2 starter-page assertion; it was updated to assert the restored conversational Home and original navigation, then the unchanged 109-test suite passed. No test contacted Supabase or Meta.
+- Browser/visual boundary: production HTTP smoke verified Home, CSS, navigation and fail-closed protected routes. Windows Chrome was discoverable, but the controller timed out navigating its existing tab to the isolated Stage 10 port and exposed no viewport resize, so fresh 390/430/1440 screenshot parity and authenticated screens remain UNVERIFIED. Pixel-perfect parity is not claimed.
+- Live Supabase and Meta remain unverified. No push, remote, deployment, migration application or LFS operation occurred.
+- Commit message: `port(ui): restore original REIBRY product experience`.

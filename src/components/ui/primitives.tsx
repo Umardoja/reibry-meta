@@ -4,6 +4,12 @@ import type { ButtonHTMLAttributes, HTMLAttributes, InputHTMLAttributes } from "
 export function Container({ className = "", ...props }: HTMLAttributes<HTMLDivElement>) {
   return <div className={"container " + className} {...props} />;
 }
+export function PageContainer({ className = "", ...props }: HTMLAttributes<HTMLDivElement>) {
+  return <div className={"page-container " + className} {...props} />;
+}
+export function StatePanel({ title, children, className = "" }: HTMLAttributes<HTMLDivElement> & { title: string }) {
+  return <div className={"state-panel " + className} role="status"><h2>{title}</h2>{children}</div>;
+}
 export function Card({ className = "", ...props }: HTMLAttributes<HTMLDivElement>) {
   return <div className={"card " + className} {...props} />;
 }

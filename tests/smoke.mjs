@@ -5,7 +5,7 @@ import { createServer } from "node:net";
 import { setTimeout as delay } from "node:timers/promises";
 import test from "node:test";
 
-test("production app serves the foundation page and its stylesheet", async () => {
+test("production app serves the restored REIBRY shell and its stylesheet", async () => {
   const portReservation = createServer();
   portReservation.listen(0, "127.0.0.1");
   await once(portReservation, "listening");
@@ -42,14 +42,12 @@ test("production app serves the foundation page and its stylesheet", async () =>
     assert.match(html, /<html[^>]*lang="en"/);
     assert.match(html, /<title>REIBRY/);
     assert.match(html, /<main[^>]*id="main"/);
-    assert.match(html, /<h1[^>]*>From Saved/);
-    assert.match(html, /to Done/);
-    assert.match(html, /A personal AI memory and action platform\./);
-    assert.match(html, /Meta Edition — Application Foundation/);
-    assert.match(html, /About this foundation/);
-    assert.match(html, /<dialog[^>]*aria-labelledby=/);
-    assert.match(html, /<label for="preview-label">Example text field/);
-    assert.doesNotMatch(html, /href="\/(plans|settings)"/);
+    assert.match(html, /<h1[^>]*>What are you trying to do\?/);
+    assert.match(html, /From saved to done/);
+    assert.match(html, /Checking your session/);
+    assert.match(html, /aria-label="Main navigation"/);
+    assert.match(html, /href="\/plans"/);
+    assert.match(html, /href="\/settings"/);
     assert.match(html, /href="\/memories"/);
     assert.match(html, /href="\/capture"/);
     assert.match(html, /href="\/ask"/);

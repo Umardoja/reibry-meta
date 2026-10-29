@@ -6,9 +6,7 @@ A personal AI memory and action platform, developed incrementally for the Meta G
 
 ## Current milestone
 
-Stage 9 adds user-reviewed, persistent Action Cards to Stage 8's grounded suggestions. Valid suggestions become inert 24-hour proposals only through the authenticated Ask flow; the user must explicitly save one before a transaction creates an idempotent confirmed planning card. A saved card is not executed or completed. Authentication and database access remain disabled by default. **Real Supabase persistence and live Meta inference are NOT VERIFIED.**
-
-The root page remains an honest development foundation. Its About dialog and unsaved text-field preview are UI demonstrations. Sign in leads to the implemented authentication screen; future product features are absent.
+Stage 10 restores the original REIBRY product shell, visual hierarchy, conversational Home, navigation, and complete user-facing route structure without replacing the hardened Stage 4–9 boundaries. Capture, Memories, Ask REIBRY and Action Cards remain wired to their existing secure implementations. Today, onboarding persistence, Life, original Plans and Ready Packs are presented honestly as deferred until their owner-scoped backends are migrated in Stage 11. Authentication and database access remain disabled by default. **Real Supabase persistence and live Meta inference are NOT VERIFIED.**
 
 ## Run locally
 
@@ -19,7 +17,7 @@ npm ci
 npm run dev -- --hostname 127.0.0.1
 ~~~
 
-Open http://127.0.0.1:3000. The public page and auth screen run without secrets or a backend. Missing configuration cannot grant access to `/memories` or its API.
+Open http://127.0.0.1:3000. The original product shell and auth screen render without secrets; protected routes fail closed when authentication is not configured. Missing configuration cannot grant access to product data or APIs.
 
 ~~~sh
 npm run lint
@@ -61,13 +59,13 @@ Server configuration names only: `MODEL_API_KEY` and `META_RATE_LIMIT_MODE=in-me
 
 This edition builds on the original September REIBRY application at source commit 76d3494465bab43a5051498e90b9a486a65312b9. PREEXISTING_WORK.md and docs/meta/MIGRATION_LOG.md preserve the migration history. Stages 1–3 remain intact.
 
-Stage 3 adapted selected original globals.css tokens, the inline brain mark, shell and UI conventions; details are in docs/meta/DESIGN_SYSTEM.md. Stage 4 adapted auth and Supabase session conventions. Stage 5 adapts the original Memory DTO, owner-bound store, Supabase query ordering, API routes and owner RLS. Stage 6 adapts capture and source-preservation patterns. Stage 7 adapts bounded tokenization, weighted literal evidence and stable ranking. These remain inherited foundations. Stage 8's Muse Spark adapter, structured evidence/citation gate, retry policy, synthetic live verifier and Ask REIBRY experience are new Meta Hackathon development. Stage 9's proposal ledger, transactionally confirmed Action Cards and review UI are also new Meta Hackathon development.
+Stage 3 adapted selected original globals.css tokens and primitives. Stage 10 restores the actual original shell, navigation destinations, route hierarchy, page headings, compact mobile-first compositions, inline icon language and truthful empty/deferred states. Stage 4 adapted auth and Supabase session conventions. Stage 5 adapts the original Memory DTO, owner-bound store, Supabase query ordering, API routes and owner RLS. Stage 6 adapts capture and source-preservation patterns. Stage 7 adapts bounded tokenization, weighted literal evidence and stable ranking. These remain inherited foundations. Stage 8's Muse Spark adapter, structured evidence/citation gate, retry policy, synthetic live verifier and Ask REIBRY experience are new Meta Hackathon development. Stage 9's proposal ledger, transactionally confirmed Action Cards and review UI are also new Meta Hackathon development.
 
 Original REIBRY contributors retain attribution and applicable rights. No publication license is inferred. No private or binary assets were copied. The original font stack uses its system fallback because a local font asset's license was not verified.
 
 ## Scope and release status
 
-No profiles, onboarding tables, roles, admin model, password recovery, MFA, OAuth, native sessions, arbitrary-page previewing, transcripts, file capture, embeddings, semantic/vector search, Plans, Ready Packs, conversation persistence, scheduled work or external action execution are included. Stage 9 adds no dependency; direct dependencies remain `@supabase/ssr` 0.12.7, `@supabase/supabase-js` 2.116.0 and `server-only` 0.0.1.
+No profiles, onboarding tables, roles, admin model, password recovery, MFA, OAuth, native sessions, arbitrary-page previewing, transcripts, file capture, embeddings, semantic/vector search, functional original Plans/Ready Packs/Life persistence, conversation persistence, scheduled work or external action execution are included. Their original routes now communicate that boundary rather than disappearing. Stage 10 adds no dependency; direct dependencies remain `@supabase/ssr` 0.12.7, `@supabase/supabase-js` 2.116.0 and `server-only` 0.0.1.
 
 All milestones remain local. The earlier remote LFS incident is unresolved. No push or remote LFS operation is authorized. The existing untracked recovery report is preserved and is not a release artifact.
 

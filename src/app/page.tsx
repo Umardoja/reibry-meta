@@ -1,18 +1,5 @@
-import { Container, Card } from "@/components/ui/primitives";
-import { FoundationPreview } from "@/components/ui/foundation-preview";
+import { AskReibry } from "@/components/ai/ask-reibry";
+import { PageContainer } from "@/components/ui/primitives";
 export default function Home() {
-  return (
-    <Container>
-      <section className="intro" aria-labelledby="tagline">
-        <p className="section-label">REIBRY</p>
-        <h1 id="tagline">From Saved<br />to Done.</h1>
-        <p className="intro-description">A personal AI memory and action platform.</p>
-        <Card className="foundation-status">
-          <span className="status-dot" aria-hidden="true" />
-          <div><h2>Meta Edition — Application Foundation</h2><p>The familiar REIBRY experience, built forward one stage at a time.</p></div>
-        </Card>
-      </section>
-      <FoundationPreview />
-    </Container>
-  );
+  return <PageContainer className="home-page"><header className="home-intro"><p className="eyebrow">From saved to done</p><h1>What are you trying to do?</h1><p className="page-sub">Tell REIBRY what is on your mind. It will search only your saved Memories before it reasons.</p></header><AskReibry variant="home" /></PageContainer>;
 }

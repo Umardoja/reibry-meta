@@ -4,9 +4,10 @@ import { RequireAuth } from "@/components/auth/require-auth";
 import { Card } from "@/components/ui/primitives";
 import type { AskResponse } from "@/lib/ai/meta/contracts";
 import type { ActionCardView, ActionProposalView } from "@/lib/actions/contracts";
+import { IC } from "@/components/design/icons";
 
 type View = { state: "idle" | "loading" | "ready" | "error"; result: AskResponse | null; message: string; question: string };
-export function AskReibry() {
+export function AskReibry({ variant = "ask" }: { variant?: "ask" | "home" }) {
   const [view, setView] = useState<View>({ state: "idle", result: null, message: "", question: "" });
   const [reviewing, setReviewing] = useState<string | null>(null);
   const [saving, setSaving] = useState<string | null>(null);
@@ -42,13 +43,14 @@ export function AskReibry() {
     finally { setSaving(null); }
   }
   return <RequireAuth>
-    <form className="ask-form" onSubmit={submit}>
-      <div className="field"><label htmlFor="ask-question">Question about your saved Memories</label>
-        <textarea className="input ask-textarea" id="ask-question" name="question" maxLength={500} required
-          placeholder="What do my saved notes say about the project launch?" aria-describedby="ask-hint" />
-        <p className="field-hint" id="ask-hint">REIBRY retrieves stored evidence first. Muse Spark cannot access Memories that were not returned by that search.</p></div>
-      <button className="button btn-primary" type="submit" disabled={view.state === "loading"}>{view.state === "loading" ? "Reasoning over evidence…" : "Ask REIBRY"}</button>
+    {variant === "home" && <div className="home-welcome"><div className="home-assistant-mark">{IC.brain}</div><div><p className="eyebrow">REIBRY</p><p>I can help you find something you saved, think through a plan, or turn grounded suggestions into Action Cards you approve.</p></div></div>}
+    <form className={variant === "home" ? "home-composer" : "ask-form"} onSubmit={submit}>
+      <label className="sr-only" htmlFor="ask-question">Question about your saved Memories</label>
+      <textarea className="input ask-textarea" id="ask-question" name="question" maxLength={500} required placeholder={variant === "home" ? "Message REIBRY…" : "Describe it however you remember it…"} aria-describedby="ask-hint" />
+      <button className="ask-submit" aria-label="Ask REIBRY" type="submit" disabled={view.state === "loading"}>{IC.send}</button>
+      <p className="field-hint" id="ask-hint">REIBRY searches stored evidence first. Muse Spark only receives bounded matching Memories.</p>
     </form>
+    {variant === "home" && <div className="thought-prompts" aria-label="Things REIBRY can help with"><span className="thought-pill">Find a Memory</span><span className="thought-pill">Plan something</span><span className="thought-pill">What’s coming up?</span></div>}
     {view.state === "loading" && <p className="ask-feedback" role="status">Searching your Memories, then asking Muse Spark only if evidence matches.</p>}
     {view.state === "error" && <div className="ask-feedback"><p className="auth-error" role="alert">{view.message}</p>
       <button className="button btn-ghost" type="button" onClick={() => void ask(view.question)}>Retry</button></div>}

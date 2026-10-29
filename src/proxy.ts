@@ -1,5 +1,5 @@
 import { canonicalOrigin } from "@/lib/auth/origin";
-// Cookie refresh only for the protected account page. The page/API verify independently.
+// Refresh scoped cookies for product routes. Every page/API still verifies independently.
 import { NextResponse, type NextRequest } from "next/server";
 import { cookieJar, isAuthCookie } from "@/lib/supabase/cookies";
 import { createAuthAdapter } from "@/lib/supabase/server";
@@ -10,7 +10,8 @@ export async function proxy(request: NextRequest) {
   try { origin = canonicalOrigin(request, process.env.AUTH_SITE_URL); } catch { return new NextResponse("Authentication is not configured.", { status: 503, headers: { "Cache-Control": "no-store" } }); }
   const incoming = request.cookies.getAll();
   const jar = cookieJar(incoming);
-  const protectedDestination = request.nextUrl.pathname.startsWith("/memories") ? "/memories" : request.nextUrl.pathname.startsWith("/capture") ? "/capture" : request.nextUrl.pathname.startsWith("/ask") ? "/ask" : request.nextUrl.pathname.startsWith("/actions") ? "/actions" : "/account";
+  const pathname = request.nextUrl.pathname;
+  const protectedDestination = pathname.startsWith("/memories") ? pathname : pathname.startsWith("/capture") ? "/capture" : pathname.startsWith("/ask") ? "/ask" : pathname.startsWith("/actions") ? "/actions" : pathname.startsWith("/today") ? "/today" : pathname.startsWith("/life") ? pathname : pathname.startsWith("/plans") ? pathname : pathname.startsWith("/settings") ? "/settings" : pathname.startsWith("/onboarding") ? "/onboarding" : "/account";
   const destination = new URL("/auth?next=" + encodeURIComponent(protectedDestination), origin);
   if (!incoming.some(c => isAuthCookie(c.name))) return applyAuthCookies(NextResponse.redirect(destination), [], origin.startsWith("https:"));
   try {
@@ -23,4 +24,4 @@ export async function proxy(request: NextRequest) {
     return applyAuthCookies(NextResponse.redirect(destination), [], origin.startsWith("https:"));
   }
 }
-export const config = { matcher: ["/account/:path*", "/memories/:path*", "/capture/:path*", "/ask/:path*", "/actions/:path*"] };
+export const config = { matcher: ["/account/:path*", "/settings/:path*", "/today/:path*", "/onboarding/:path*", "/memories/:path*", "/capture/:path*", "/ask/:path*", "/actions/:path*", "/life/:path*", "/plans/:path*"] };
