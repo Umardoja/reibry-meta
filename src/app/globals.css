@@ -89,6 +89,16 @@ h1 { font-size: clamp(2.75rem, 6vw, 4.5rem); line-height: 1.08; letter-spacing: 
 .memory-list { list-style: none; display: grid; gap: 12px; padding: 0; margin: 24px 0 0; }
 .memory-list h2 { font-size: 1rem; overflow-wrap: anywhere; }
 .memory-list p { color: var(--on-surface-var); font-size: .875rem; }
+.memory-search { display: grid; gap: var(--sp-md); margin-bottom: var(--sp-xl); }
+.memory-search .field { margin: 0; }
+.memory-search .button { width: 100%; }
+.search-feedback { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-md); margin-bottom: var(--sp-lg); }
+.search-feedback .auth-error { margin-top: 0; }
+.search-results { margin-bottom: var(--sp-2xl); }
+.search-results > h2 { margin-bottom: var(--sp-md); }
+.memory-title-link { color: var(--primary); overflow-wrap: anywhere; }
+.memory-excerpt { margin-top: var(--sp-sm); color: var(--on-surface); }
+@media (min-width: 700px) { .memory-search { grid-template-columns: minmax(0, 1fr) auto; align-items: end; } .memory-search .button { width: auto; } }
 
 /* Stage 6 Capture presentation, adapted from original REIBRY capture form conventions. */
 .section-heading { margin-bottom: var(--sp-xl); }

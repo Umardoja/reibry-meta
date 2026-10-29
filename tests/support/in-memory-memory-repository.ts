@@ -36,6 +36,10 @@ export function createInMemoryMemoryRepository(ownerId: string, state: MemoryTes
       if (existingId) return { memory: serializeMemory(state.get(existingId)!), duplicate: true };
       const memory = createRecord(input); dedupe.set(ownerKey, memory.id); return { memory, duplicate: false };
     },
+    async searchCandidates(limit) {
+      return [...state.values()].filter(item => item.userId === ownerId)
+        .sort((a, b) => b.createdAt.localeCompare(a.createdAt) || a.id.localeCompare(b.id)).slice(0, limit).map(serializeMemory);
+    },
     async list(input: MemoryList) {
       const items = [...state.values()].filter(item => item.userId === ownerId)
         .sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id));

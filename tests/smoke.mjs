@@ -76,6 +76,9 @@ test("production app serves the foundation page and its stylesheet", async () =>
     const captureCreate = await fetch(origin + "/api/capture", { method: "POST", headers: { Origin: origin, "Content-Type": "application/json" },
       body: JSON.stringify({ sourceType: "text", content: "must not persist without a session" }) });
     assert.equal(captureCreate.status, 401);
+    const search = await fetch(origin + "/api/memories/search?q=private&limit=10");
+    assert.equal(search.status, 401);
+    assert.equal((await search.json()).error.code, "AUTH_REQUIRED");
     const account = await fetch(origin + "/account", { redirect: "manual" });
     assert.equal(account.status, 307);
     assert.match(account.headers.get("location"), /\/auth\?next=/);

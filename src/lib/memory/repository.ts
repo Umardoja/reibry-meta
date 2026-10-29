@@ -9,6 +9,8 @@ export interface MemoryRepository {
   readonly ownerId: string;
   create(input: NewTextMemory): Promise<Memory>;
   createUnique(input: NewMemory, dedupeKey: string): Promise<{ memory: Memory; duplicate: boolean }>;
+  /** Bounded owner-only records for server-side lexical ranking. Never exposed directly to clients. */
+  searchCandidates(limit: number): Promise<Memory[]>;
   list(input: MemoryList): Promise<MemoryPage>;
   read(id: string): Promise<Memory>;
   update(id: string, input: MemoryUpdate): Promise<Memory>;

@@ -35,6 +35,12 @@ export function createSupabaseMemoryRepository(client: SupabaseClient, ownerId: 
       if (existing.error || !existing.data) return storage(existing.error);
       return { memory: decode(existing.data), duplicate: true };
     },
+    async searchCandidates(limit) {
+      const { data, error } = await client.from("memories").select(columns).eq("user_id", ownerId)
+        .order("created_at", { ascending: false }).order("id", { ascending: true }).limit(limit);
+      if (error) return storage(error);
+      return (data ?? []).map(decode);
+    },
     async list({ limit, offset }) {
       const { data, error } = await client.from("memories").select(columns).eq("user_id", ownerId)
         .order("created_at", { ascending: false }).order("id", { ascending: false }).range(offset, offset + limit);

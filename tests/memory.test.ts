@@ -119,19 +119,22 @@ class FakeQuery {
   eq(...args: unknown[]) { this.calls.push(["eq", ...args]); return this; }
   order(...args: unknown[]) { this.calls.push(["order", ...args]); return this; }
   range(...args: unknown[]) { this.calls.push(["range", ...args]); return Promise.resolve(this.response); }
+  limit(...args: unknown[]) { this.calls.push(["limit", ...args]); return Promise.resolve(this.response); }
   single() { this.calls.push(["single"]); return Promise.resolve(this.response); }
   maybeSingle() { this.calls.push(["maybeSingle"]); return Promise.resolve(this.response); }
 }
 test("Supabase adapter writes and filters the verified owner without elevated access", async () => {
   const row = { id: idA, user_id: userA, title: "Owned", source_type: "text", source_url: null, raw_text: "Owned",
     analysis_status: "processing", metadata: {}, created_at: at, updated_at: at };
-  const queries: FakeQuery[] = [];
-  const client = { from: () => { const query = new FakeQuery({ data: row, error: null }); queries.push(query); return query; } } as unknown as SupabaseClient;
+  const queries: FakeQuery[] = []; let fromCall = 0;
+  const client = { from: () => { const query = new FakeQuery({ data: fromCall++ === 2 ? [row] : row, error: null }); queries.push(query); return query; } } as unknown as SupabaseClient;
   const repository = createSupabaseMemoryRepository(client, userA);
-  await repository.create({ title: "Owned", rawText: "Owned" }); await repository.read(idA);
+  await repository.create({ title: "Owned", rawText: "Owned" }); await repository.read(idA); await repository.searchCandidates(250);
   const insert = queries[0].calls.find(call => call[0] === "insert")?.[1] as Record<string, unknown>;
   assert.equal(insert.user_id, userA); assert.equal(insert.analysis_status, "processing");
   assert.ok(queries[1].calls.some(call => call[0] === "eq" && call[1] === "user_id" && call[2] === userA));
+  assert.ok(queries[2].calls.some(call => call[0] === "eq" && call[1] === "user_id" && call[2] === userA));
+  assert.ok(queries[2].calls.some(call => call[0] === "limit" && call[1] === 250));
   assert.equal("service_role" in insert, false);
 });
 test("Supabase duplicate conflicts are re-read only by verified owner and dedupe key", async () => {
