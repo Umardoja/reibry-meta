@@ -117,3 +117,17 @@ h1 { font-size: clamp(2.75rem, 6vw, 4.5rem); line-height: 1.08; letter-spacing: 
 .capture-result .button { justify-self: start; margin-top: var(--sp-sm); }
 .source-value { overflow-wrap: anywhere; color: var(--on-surface-var); }
 @media (max-width: 430px) { .capture-choice { display: grid; } .capture-result .button { width: 100%; } }
+.ask-form { display: grid; gap: var(--sp-lg); }
+.ask-form .field { margin: 0; }
+.ask-form > .button { width: 100%; }
+.ask-textarea { min-height: 132px; resize: vertical; }
+.ask-feedback { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-md); margin-top: var(--sp-lg); }
+.ask-feedback .auth-error { margin-top: 0; }
+.ask-answer { display: grid; gap: var(--sp-lg); margin-top: var(--sp-xl); }
+.ask-answer-heading { display: flex; align-items: center; gap: var(--sp-md); }
+.ask-answer-heading .edition-pill { margin-left: auto; text-transform: capitalize; }
+.ask-answer section { display: grid; gap: var(--sp-sm); }
+.ask-answer ul { margin: 0; padding-left: 1.25rem; display: grid; gap: var(--sp-sm); }
+.ask-answer li, .ask-answer p { overflow-wrap: anywhere; }
+@media (min-width: 700px) { .ask-form { grid-template-columns: minmax(0, 1fr) auto; align-items: end; } .ask-form > .button { width: auto; } }
+@media (max-width: 430px) { .ask-answer-heading { align-items: flex-start; } .ask-feedback .button { width: 100%; } }

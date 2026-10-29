@@ -6,7 +6,7 @@ A personal AI memory and action platform, developed incrementally for the Meta G
 
 ## Current milestone
 
-Stage 7 adds deterministic, owner-scoped lexical search over stored Memory titles, note text, whitelisted source metadata and saved hostnames. Search returns only validated evidence DTOs with exact Memory anchors, bounded note excerpts and transparent ranking reasons. It adds no embeddings, semantic claims or AI calls. Authentication and database access remain disabled by default. **Real Supabase authentication, persistence, hosted RLS and live search are NOT VERIFIED.**
+Stage 8 adds a genuine server-only Meta Model API integration over Stage 7 owner-scoped evidence. The protected Ask REIBRY flow retrieves up to six matching Memories, sends a redacted and bounded evidence packet to Standard `muse-spark-1.3`, validates strict structured output and rejects citations that were not supplied. Missing evidence skips the provider entirely. Authentication and database access remain disabled by default. **Real Supabase persistence and live Meta inference are NOT VERIFIED.**
 
 The root page remains an honest development foundation. Its About dialog and unsaved text-field preview are UI demonstrations. Sign in leads to the implemented authentication screen; future product features are absent.
 
@@ -29,7 +29,7 @@ npm test
 npm start -- --hostname 127.0.0.1
 ~~~
 
-Build before npm test. Tests combine deterministic auth, Memory, Capture and lexical-retrieval behavior, mocked SDK/repository/network responses, static migration checks, and a production localhost smoke test. The smoke server explicitly disables auth and rejects unauthenticated Memory/Capture/search access. It does not create real users, contact hosted Supabase, execute SQL or call a model. The in-memory repository exists only under `tests/support` and cannot be enabled in production.
+Build before npm test. Tests combine deterministic auth, Memory, Capture, lexical retrieval and grounded-Meta behavior with mocked SDK/repository/provider transport, static migration checks, and a production localhost smoke test. The smoke server disables auth and rejects unauthenticated Memory/Capture/search/reasoning access. It does not create users, contact hosted Supabase, execute SQL or call a model. The in-memory repository exists only under `tests/support` and cannot be enabled in production.
 
 ## Authentication configuration and boundaries
 
@@ -51,24 +51,28 @@ Capture limits notes to 50,000 characters, links to 2,048, titles to 200, and me
 
 Authenticated `GET /api/memories/search?q=...&limit=...` scans at most the owner's newest 250 Memories and returns 1–20 ranked results. Queries are limited to 200 characters and 12 normalized terms. Only literal evidence is eligible; processing-state Memories remain searchable, unrelated results are not used as padding, and metadata-only links never imply page/video analysis. See [Retrieval architecture](docs/meta/RETRIEVAL_ARCHITECTURE.md).
 
+Authenticated `POST /api/ai/ask` accepts only a question up to 500 characters. It retrieves six owner-bound results, removes URL credentials/query/fragment data, caps evidence at 12,000 bytes and calls `POST https://api.meta.ai/v1/responses` with `store=false`, no tools, at most 800 output tokens and strict `text.format` JSON Schema. Every returned citation and suggested-step reference must be a supplied Memory ID. The UI labels suggestions as unexecuted. See [Meta integration](docs/meta/META_INTEGRATION.md).
+
+Server configuration names only: `MODEL_API_KEY` and `META_RATE_LIMIT_MODE=in-memory`. The key is never public. The explicit rate-limit setting opts into a five-provider-requests-per-minute, per-user, per-process gate; multi-instance deployment requires a shared limiter before release. The optional `npm run verify:meta` command is disabled unless `META_LIVE_VERIFY=I_AUTHORIZE_BILLABLE_META_TEST` is supplied after owner approval. See [live verification](docs/meta/META_LIVE_VERIFICATION.md).
+
 ## Provenance
 
 This edition builds on the original September REIBRY application at source commit 76d3494465bab43a5051498e90b9a486a65312b9. PREEXISTING_WORK.md and docs/meta/MIGRATION_LOG.md preserve the migration history. Stages 1–3 remain intact.
 
-Stage 3 adapted selected original globals.css tokens, the inline brain mark, shell and UI conventions; details are in docs/meta/DESIGN_SYSTEM.md. Stage 4 adapted auth and Supabase session conventions. Stage 5 adapts the original Memory DTO, owner-bound store, Supabase query ordering, API routes and owner RLS. Stage 6 adapts capture and source-preservation patterns. Stage 7 adapts bounded tokenization, weighted literal evidence and stable ranking while excluding source vectors, inferred semantic concepts and AI-generated fields. These remain inherited foundations, not new Meta AI functionality.
+Stage 3 adapted selected original globals.css tokens, the inline brain mark, shell and UI conventions; details are in docs/meta/DESIGN_SYSTEM.md. Stage 4 adapted auth and Supabase session conventions. Stage 5 adapts the original Memory DTO, owner-bound store, Supabase query ordering, API routes and owner RLS. Stage 6 adapts capture and source-preservation patterns. Stage 7 adapts bounded tokenization, weighted literal evidence and stable ranking. These remain inherited foundations. Stage 8's Muse Spark adapter, structured evidence/citation gate, retry policy, synthetic live verifier and Ask REIBRY experience are new Meta Hackathon development.
 
 Original REIBRY contributors retain attribution and applicable rights. No publication license is inferred. No private or binary assets were copied. The original font stack uses its system fallback because a local font asset's license was not verified.
 
 ## Scope and release status
 
-No profiles, onboarding tables, roles, admin model, password recovery, MFA, OAuth, native sessions, arbitrary-page previewing, transcripts, file capture, embeddings, semantic/vector search, Plans, Ready Packs or AI provider implementation are included. Stage 7 adds no dependency; existing direct dependencies remain `@supabase/ssr` 0.12.7, `@supabase/supabase-js` 2.116.0 and `server-only` 0.0.1.
+No profiles, onboarding tables, roles, admin model, password recovery, MFA, OAuth, native sessions, arbitrary-page previewing, transcripts, file capture, embeddings, semantic/vector search, Plans, Ready Packs, conversation persistence or action execution are included. Stage 8 adds no dependency; direct dependencies remain `@supabase/ssr` 0.12.7, `@supabase/supabase-js` 2.116.0 and `server-only` 0.0.1.
 
 All milestones remain local. The earlier remote LFS incident is unresolved. No push or remote LFS operation is authorized. The existing untracked recovery report is preserved and is not a release artifact.
 
-Stage 8, only after separate authorization, may add a server-only provider-neutral Muse Spark adapter consuming the bounded retrieval evidence packet. Official readiness facts verified on 2026-10-29 are recorded in [Meta API readiness](docs/meta/META_API_READINESS.md). Model access, billing and credentials remain unverified; `MODEL_API_KEY` has not been added or used.
+The Meta adapter is implemented, but no billable request was authorized or executed. Model access, API-key validity and billing remain unverified. Stage 9 should build only a confirmation ledger and idempotent action proposal boundary; suggestions must remain inert until a later explicitly authorized execution milestone.
 
 ## Validation limits
 
-The migration log records exact command and browser results. Mocked ownership tests and static SQL checks do not verify PostgreSQL RLS. Real provider settings, session refresh, concurrent database writes and hosted policy behavior remain unverified. No distributed rate limiter, CAPTCHA, screen-reader run or physical-device safe-area test is claimed.
+The migration log records exact command and browser results. Mocked ownership tests and static SQL checks do not verify PostgreSQL RLS. Real provider settings, session refresh, concurrent database writes and hosted policy behavior remain unverified. The current request throttle is process-local rather than distributed. No CAPTCHA, screen-reader run or physical-device safe-area test is claimed.
 
 The pre-existing ESLint deprecation warning and unapproved transitive unrs-resolver install script remain unchanged. No additional install-script approval or arbitrary framework workaround was used.

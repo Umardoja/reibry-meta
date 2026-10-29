@@ -34,9 +34,9 @@ export function missingSession(error: { code?: string; status?: number; name?: s
   return error.name === "AuthSessionMissingError" || error.status === 401 ||
     ["bad_jwt", "session_not_found", "refresh_token_not_found", "refresh_token_already_used"].includes(error.code || "");
 }
-export function safeNext(value: unknown): "/" | "/account" | "/memories" | "/capture" | null {
+export function safeNext(value: unknown): "/" | "/account" | "/memories" | "/capture" | "/ask" | null {
   // Only implemented destinations. Reject encoded/normalized URL tricks as well.
-  return value === "/" || value === "/account" || value === "/memories" || value === "/capture" ? value : null;
+  return value === "/" || value === "/account" || value === "/memories" || value === "/capture" || value === "/ask" ? value : null;
 }
 export function credentials(value: unknown, signup: boolean): { email: string; password: string; next: string } {
   if (!value || typeof value !== "object") throw new AuthFailure("INVALID_REQUEST");

@@ -12,6 +12,7 @@ export type RetrievalItem = {
   displayTitle: string;
   sourceType: MemorySourceType;
   storedExcerpt: string | null;
+  matchedSourceMetadata: string[];
   sourceUrl: string | null;
   processingStatus: MemoryStatus;
   match: { reason: string; score: number; fields: EvidenceField[] };
@@ -36,6 +37,8 @@ export function validateRetrievalItem(item: RetrievalItem) {
     throw new RetrievalContractError("Invalid retrieval identity.");
   if (!item.displayTitle || item.displayTitle.length > 200 || (item.storedExcerpt?.length ?? 0) > 280)
     throw new RetrievalContractError("Invalid retrieval evidence.");
+  if (!Array.isArray(item.matchedSourceMetadata) || item.matchedSourceMetadata.length > 3 || item.matchedSourceMetadata.some(value => !value || value.length > 200))
+    throw new RetrievalContractError("Invalid retrieval metadata.");
   if (!Number.isInteger(item.match.score) || item.match.score < 1 || item.match.score > 100 || !item.match.fields.length)
     throw new RetrievalContractError("Invalid retrieval ranking.");
   return item;

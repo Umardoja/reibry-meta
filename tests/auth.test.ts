@@ -104,6 +104,7 @@ test("return destination only accepts implemented local routes", () => {
   assert.equal(safeNext("/"), "/"); assert.equal(safeNext("/account"), "/account");
   assert.equal(safeNext("/memories"), "/memories");
   assert.equal(safeNext("/capture"), "/capture");
+  assert.equal(safeNext("/ask"), "/ask");
 });
 test("PKCE callback requires cookie, exchanges once, verifies user and bounds destination", async () => {
   const req = new Request(origin + "/auth/callback?code=test-code&next=//outside.test");

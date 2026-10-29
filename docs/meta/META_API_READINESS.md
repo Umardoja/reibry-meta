@@ -9,6 +9,7 @@ Verified against Meta's official documentation on 2026-10-29 (Africa/Lagos). Thi
 - Generation endpoint selected for Stage 8: `POST /v1/responses`
 - Authentication: `Authorization: Bearer $MODEL_API_KEY`
 - Server-only environment variable: `MODEL_API_KEY`
+- Responses structured output: `text.format` with `type: "json_schema"` and optional strict validation; top-level `response_format` does not configure Responses structured output.
 - Current context window: 1,048,576 tokens; documented maximum output for Muse Spark 1.3 is 131,072 tokens. REIBRY should use much smaller application limits.
 
 Sources: [overview](https://dev.meta.ai/docs/overview), [quickstart](https://dev.meta.ai/docs/quickstart), and [API reference](https://dev.meta.ai/docs/api-reference). The API also offers Chat Completions and Anthropic-compatible Messages, but the Responses API is the documented direct-call quickstart and best fit for later structured evidence handling.
@@ -23,7 +24,7 @@ Standard mode documentation states submitted content is not used to train Meta m
 
 ## Smallest Stage 8 integration point
 
-The future server-only adapter should accept a structure equivalent to:
+The Stage 8 server-only adapter accepts a structure equivalent to:
 
 ~~~ts
 type GroundedMuseInput = {
@@ -44,4 +45,4 @@ type GroundedMuseInput = {
 };
 ~~~
 
-The adapter should be provider-neutral, bounded, abortable and tested with injected mock transport before any approved live call. The browser must never receive `MODEL_API_KEY`. The server should validate structured output, reject unknown Memory citations, distinguish provider/access/rate-limit errors, and avoid sending evidence when retrieval returns no match.
+The implemented adapter is bounded, abortable and tested with injected mock transport before any approved live call. The browser never receives `MODEL_API_KEY`. The server validates structured output, rejects unknown Memory citations, distinguishes provider/access/rate-limit errors, and avoids sending evidence when retrieval returns no match. See `META_INTEGRATION.md` for the completed boundary.

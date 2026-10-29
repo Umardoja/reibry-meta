@@ -19,6 +19,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         <Link href="/" className="nav-btn">Home</Link>
         <Link href="/memories" className="nav-btn">Memories</Link>
         <Link href="/capture" className="nav-btn">Capture</Link>
+        <Link href="/ask" className="nav-btn">Ask REIBRY</Link>
       </nav>
       <footer className="app-footer">Built on the original REIBRY foundation.</footer>
     </div>

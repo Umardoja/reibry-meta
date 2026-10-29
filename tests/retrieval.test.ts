@@ -76,6 +76,7 @@ test("metadata-only link matches only stored metadata and never implies page con
     metadata: { platform: "youtube", author: "Ada Baker", metadataProvider: "youtube-oembed" } });
   const item = rankMemories([saved], "ada baker", 10).items[0];
   assert.equal(item.storedExcerpt, null); assert.deepEqual(item.match.fields, ["metadata"]);
+  assert.deepEqual(item.matchedSourceMetadata, ["Ada Baker"]);
   assert.equal("transcript" in item, false); assert.equal("summary" in item, false);
 });
 

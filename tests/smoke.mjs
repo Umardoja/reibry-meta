@@ -52,6 +52,7 @@ test("production app serves the foundation page and its stylesheet", async () =>
     assert.doesNotMatch(html, /href="\/(plans|settings)"/);
     assert.match(html, /href="\/memories"/);
     assert.match(html, /href="\/capture"/);
+    assert.match(html, /href="\/ask"/);
     const stylesheet = html.match(/<link[^>]*href="([^"]+\.css[^"]*)"/)?.[1];
     assert.ok(stylesheet, "Rendered page must include its CSS");
     const cssResponse = await fetch(new URL(stylesheet.replaceAll("&amp;", "&"), origin));
@@ -79,6 +80,10 @@ test("production app serves the foundation page and its stylesheet", async () =>
     const search = await fetch(origin + "/api/memories/search?q=private&limit=10");
     assert.equal(search.status, 401);
     assert.equal((await search.json()).error.code, "AUTH_REQUIRED");
+    const ask = await fetch(origin + "/api/ai/ask", { method: "POST", headers: { Origin: origin, "Sec-Fetch-Site": "same-origin", "Content-Type": "application/json" },
+      body: JSON.stringify({ question: "private" }) });
+    assert.equal(ask.status, 401);
+    assert.equal((await ask.json()).error.code, "AUTH_REQUIRED");
     const account = await fetch(origin + "/account", { redirect: "manual" });
     assert.equal(account.status, 307);
     assert.match(account.headers.get("location"), /\/auth\?next=/);
@@ -88,6 +93,9 @@ test("production app serves the foundation page and its stylesheet", async () =>
     const capturePage = await fetch(origin + "/capture", { redirect: "manual" });
     assert.equal(capturePage.status, 307);
     assert.match(capturePage.headers.get("location"), /\/auth\?next=/);
+    const askPage = await fetch(origin + "/ask", { redirect: "manual" });
+    assert.equal(askPage.status, 307);
+    assert.match(askPage.headers.get("location"), /\/auth\?next=/);
     const rejected = await fetch(origin + "/api/auth/sign-in", { method: "POST", headers: { Origin: origin, "Content-Type": "application/json" },
       body: JSON.stringify({ email: "person@example.test", password: "test-only-password" }) });
     assert.equal(rejected.status, 503);

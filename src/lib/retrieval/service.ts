@@ -10,10 +10,9 @@ export function normalizeQuery(value: string) {
   return { phrase, terms };
 }
 function normalized(value: string) { return value.normalize("NFKC").toLocaleLowerCase("en").replace(/[^\p{L}\p{N}]+/gu, " ").replace(/\s+/g, " ").trim(); }
-function metadataText(metadata: Record<string, JsonValue>) {
-  return [metadata.author, metadata.platform, metadata.metadataProvider]
-    .filter((value): value is string => typeof value === "string").join(" ");
-}
+function metadataValues(metadata: Record<string, JsonValue>) { return [metadata.author, metadata.platform, metadata.metadataProvider]
+  .filter((value): value is string => typeof value === "string" && !!value.trim()); }
+function metadataText(metadata: Record<string, JsonValue>) { return metadataValues(metadata).join(" "); }
 function hostname(sourceUrl: string | null) { try { return sourceUrl ? new URL(sourceUrl).hostname.replace(/^www\./, "") : ""; } catch { return ""; } }
 function matchedTerms(text: string, terms: string[]) { const source = new Set(normalized(text).split(" ")); return terms.filter(term => source.has(term)); }
 function excerpt(value: string | null, phrase: string, terms: string[]) {
@@ -45,9 +44,10 @@ export function rankMemories(memories: Memory[], query: string, limit: number): 
     const score = Math.min(100, Math.round((exactTitle ? 40 : 0) + (phrase("title") ? 24 : 0) + coverage("title") * 30 +
       (phrase("note") ? 16 : 0) + coverage("note") * 18 + (phrase("metadata") ? 10 : 0) + coverage("metadata") * 12 +
       (phrase("hostname") ? 8 : 0) + coverage("hostname") * 10 + Math.max(0, fields.length - 1) * 2));
+    const matchedSourceMetadata = metadataValues(memory.metadata).filter(value => matchedTerms(value, input.terms).length || normalized(value).includes(input.phrase)).slice(0, 3).map(value => value.slice(0, 200));
     const item: RetrievalItem = { memoryId: memory.id, memoryHref: `/memories#memory-${memory.id}`, displayTitle: memory.title,
       sourceType: memory.sourceType, storedExcerpt: memory.sourceType === "text" ? excerpt(memory.rawText, input.phrase, input.terms) : null,
-      sourceUrl: memory.sourceUrl, processingStatus: memory.analysisStatus, match: { reason: reason(fields), score: Math.max(1, score), fields } };
+      matchedSourceMetadata, sourceUrl: memory.sourceUrl, processingStatus: memory.analysisStatus, match: { reason: reason(fields), score: Math.max(1, score), fields } };
     return { item: validateRetrievalItem(item), createdAt: memory.createdAt };
   }).filter((value): value is { item: RetrievalItem; createdAt: string } => value !== null)
     .sort((a, b) => b.item.match.score - a.item.match.score || Date.parse(b.createdAt) - Date.parse(a.createdAt) || a.item.memoryId.localeCompare(b.item.memoryId))
