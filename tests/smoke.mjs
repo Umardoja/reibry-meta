@@ -97,6 +97,12 @@ test("production app serves the restored REIBRY shell and its stylesheet", async
       body: JSON.stringify({ message: "Find my saved notes", timezone: "UTC" }) });
     assert.equal(home.status, 401);
     assert.equal((await home.json()).error.code, "AUTH_REQUIRED");
+    const plans = await fetch(origin + "/api/plans?limit=10");
+    assert.equal(plans.status, 401);
+    assert.equal((await plans.json()).error.code, "AUTH_REQUIRED");
+    const planCreate = await fetch(origin + "/api/plans", { method: "POST", headers: { Origin: origin, "Sec-Fetch-Site": "same-origin", "Content-Type": "application/json" },
+      body: JSON.stringify({ title: "private", memoryIds: [], requestId: "40000000-0000-4000-8000-000000000001" }) });
+    assert.equal(planCreate.status, 401);
     const lifeCreate = await fetch(origin + "/api/life/create", {
       method: "POST", headers: { Origin: origin, "Sec-Fetch-Site": "same-origin", "Content-Type": "application/json" },
       body: JSON.stringify({ text: "must not persist without a session", timezone: "UTC" }),
@@ -139,6 +145,12 @@ test("production app serves the restored REIBRY shell and its stylesheet", async
     const todayPage = await fetch(origin + "/today", { redirect: "manual" });
     assert.equal(todayPage.status, 307);
     assert.match(todayPage.headers.get("location"), /\/auth\?next=/);
+    const plansPage = await fetch(origin + "/plans", { redirect: "manual" });
+    assert.equal(plansPage.status, 307);
+    assert.match(plansPage.headers.get("location"), /\/auth\?next=/);
+    const planPage = await fetch(origin + "/plans/30000000-0000-4000-8000-000000000001", { redirect: "manual" });
+    assert.equal(planPage.status, 307);
+    assert.match(planPage.headers.get("location"), /\/auth\?next=/);
     const rejected = await fetch(origin + "/api/auth/sign-in", { method: "POST", headers: { Origin: origin, "Content-Type": "application/json" },
       body: JSON.stringify({ email: "person@example.test", password: "test-only-password" }) });
     assert.equal(rejected.status, 503);

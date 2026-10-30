@@ -234,3 +234,19 @@
 - Meta preservation: Stage 8 provider adapter, evidence/citation validation, retry/budget controls and Stage 9 transactional Action confirmation remain authoritative and regression-covered.
 - Commit message: `port(home): restore original conversational orchestration`.
 - Push status: NOT PUSHED; no remote, Git LFS, hosted migration, provider or external action operation authorized.
+
+## Stage 11D - Original REIBRY planning workflows
+
+- Date: 2026-10-30 (Africa/Lagos).
+- Parent: `12a01299df56494e3b251cc6b7dc66ae940907bd` on `feat/original-product-parity`; prior commits and the untracked Stage 1 recovery report were preserved.
+- Inherited implementation: adapted original `src/app/plans/page.tsx`, `src/app/plans/[id]/page.tsx`, `src/types/reibry.ts`, `src/lib/plans/{service,finalization,conversation}.ts`, verified-store conventions and Ready Pack migration ownership patterns at source `76d3494465bab43a5051498e90b9a486a65312b9`.
+- UI: restored From saved to done, Plans, Coming up / No date / Past-completed grouping, original Plan cards/options, create/edit/date/status/archive/delete dialogs, Your Plan detail overview, exact Memory links and optional Life-context navigation. Loading, empty and safe error states use the restored shell/design system.
+- Domain/API: added strict Plan contracts, active/completed/archived lifecycle, owner repository, non-elevated Supabase adapter, deterministic test adapter and protected `GET`/`POST /api/plans` plus `GET`/`PATCH`/`DELETE /api/plans/[id]`.
+- Ownership/concurrency: the client cannot set ownership. At most 20 unique Memory IDs and one Life context are transactionally revalidated against the authenticated owner. Creation uses a stable idempotency UUID; updates require an expected version; stale concurrent changes return conflict.
+- Schema: prepared but did not apply `20261030010000_plans.sql`. It forces owner RLS, grants authenticated owner reads only, revokes direct writes, uses composite same-owner foreign keys and narrowly granted fixed create/update/delete functions. The rollback-only `supabase/tests/plans_rls.sql` two-user plan was not executed.
+- Ready Pack boundary: no pack, guide, section, checklist, AI generation or completion claim is created. The detail page preserves its placement with an explicit Stage 11E deferred state. Action Cards remain a separate Meta domain.
+- Dependencies: none added; package lock unchanged.
+- Baseline: lint PASS; typecheck PASS; existing tests PASS 153/153; production build PASS before implementation.
+- Final validation: lint PASS; typecheck PASS; production build PASS with `/api/plans`, `/api/plans/[id]`, `/plans` and `/plans/[id]`; 169/169 deterministic tests PASS (153 previous plus 16 Plans); git diff check PASS. Production HTTP smoke verified anonymous Plan API denial and protected page redirects. Desktop browser automation lost its reliable target after navigation, so authenticated 390/430/1440 comparison remains unverified. Hosted Supabase/RLS remains **NOT VERIFIED**.
+- Commit message: `port(plans): restore original REIBRY planning workflows`.
+- Push status: NOT PUSHED; no remote, Git LFS, hosted migration, provider or external action operation authorized.
