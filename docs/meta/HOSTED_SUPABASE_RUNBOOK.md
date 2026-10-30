@@ -155,7 +155,7 @@ both locally and remotely.
   on `memories` and `life_contexts` only.
 - **Data:** zero rows in every product table and zero Auth users.
 
-**Privilege finding (not yet corrected).** Hosted Supabase default privileges
+**Privilege finding (corrected in Stage 12F-1; see below).** Hosted Supabase default privileges
 grant `EXECUTE` on new `public` functions to `anon`, `authenticated`, and
 `service_role`. The Plans migration revokes only from `PUBLIC`, so `anon`
 retains `EXECUTE` on these `SECURITY DEFINER` functions:
@@ -191,6 +191,46 @@ plan below succeeds.
 - Confirm that Supabase Auth allows the configured `<AUTH_SITE_URL>/auth/callback`
   redirect and the intended email sign-in method.
 - Separately approve creating two disposable users and synthetic records.
+
+## Stage 12F-1 anonymous function execution hardening (2026-10-30)
+
+**What changed.** Forward-only migration
+`20261030040000_restrict_anon_function_execute.sql` revokes `EXECUTE` from
+`PUBLIC` and `anon` on six functions, using exact signatures:
+
+- `create_owned_plan`
+- `update_owned_plan`
+- `delete_owned_plan`
+- `set_action_updated_at`
+- `set_life_updated_at`
+- `set_memory_updated_at`
+
+It does not change `authenticated` or `service_role` grants. It ends with an
+in-transaction guard that aborts the migration if `anon` can still execute any
+`public` function.
+
+**Source of the grants.** Before the change, each of the six ACLs contained a
+direct `anon=X/postgres` entry inherited from the `postgres` default-privilege
+rule for functions in `public`. No function had a `PUBLIC` entry. No
+`SECURITY DEFINER` function outside `public` (excluding extension-owned
+functions) was executable by `anon`.
+
+**Hosted application.** After the identity re-check, the dry-run listed only
+the new migration. It was applied once with `supabase db push --linked`.
+
+**Hosted read-only verification** (inside a read-only transaction):
+
+- **Migration history:** eight versions recorded.
+- **`anon`:** cannot execute any of the 11 `public` functions.
+- **Other roles:** the `authenticated` and `service_role` ACL entries match
+  the pre-migration catalog exactly.
+- **Trusted proposal RPC:** `create_trusted_action_proposals` remains executable
+  only by `service_role`.
+- **Unchanged state:** all 11 tables still have forced RLS; zero Auth users;
+  zero product rows.
+
+Two-user hosted RLS and persistence remain **NOT VERIFIED**; the prerequisites
+above are unchanged.
 
 ## Approved two-user test plan
 

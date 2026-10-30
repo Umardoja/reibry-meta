@@ -352,3 +352,16 @@
 - Verification boundary: hosted schema, RLS flags, and grants are verified by catalog inspection. Hosted two-user RLS, Auth journeys, and persistence remain **NOT VERIFIED**. `SUPABASE_SECRET_KEY` remains absent.
 - External safety: no hosted users, rows, Auth settings, or out-of-migration SQL were written. No Meta request, Git remote operation, Git LFS command, or original REIBRY modification occurred.
 - Push status: NOT PUSHED.
+
+## Stage 12F-1 - Restrict anonymous function execution
+
+- Date: 2026-10-30 (Africa/Lagos).
+- Parent: `23620da1337a682c065537ee33d6a80e17c879f3` on `feat/original-product-parity`. The pre-existing `.env.example` modification, ignored `.env.local`, and untracked Stage 1 recovery report were preserved and not staged.
+- Finding confirmed: hosted ACLs showed direct `anon=X/postgres` grants on `create_owned_plan`, `update_owned_plan`, `delete_owned_plan`, and the three `set_*_updated_at` trigger helpers. They came from the `postgres` default-privilege rule for functions in `public`. No `PUBLIC` function grants existed, and no other anonymous-callable `SECURITY DEFINER` function was found.
+- Migration: added forward-only `20261030040000_restrict_anon_function_execute.sql`. It revokes `EXECUTE` from `PUBLIC` and `anon` on the six exact signatures, leaves `authenticated`/`service_role` unchanged, and aborts if `anon` can still execute any `public` function.
+- Harness: added `supabase/tests/hosted_default_privileges.sql` (local only) and `supabase/tests/function_acl.sql`. Under hosted-equivalent defaults, the pre-fix chain reproduced the six-function gap and failed both `function_acl.sql` and `plans_rls.sql`. After the migration, all six SQL suites passed on a throwaway localhost-only PostgreSQL 18.3 cluster, which was then deleted. Docker was unavailable.
+- Hosted: identity re-confirmed privately, the dry-run listed only the new migration, and one `supabase db push --linked` applied it. A read-only check then confirmed eight recorded versions, zero `anon`-executable `public` functions, unchanged `authenticated`/`service_role` ACLs, trusted proposal creation still `service_role`-only, 11 forced-RLS tables, zero Auth users, and zero product rows.
+- Validation: lint PASS; typecheck PASS; 191/191 tests PASS; production build PASS; `git diff --check` PASS.
+- Verification boundary: hosted two-user RLS, Auth journeys, and persistence remain **NOT VERIFIED**. `SUPABASE_SECRET_KEY` remains absent.
+- External safety: no hosted users or rows, no Auth-setting changes, no Meta request, no Git remote or LFS operation, and no original REIBRY modification.
+- Push status: NOT PUSHED.
