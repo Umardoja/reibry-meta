@@ -298,3 +298,18 @@
 - Documentation: added `PROPOSAL_PROVENANCE_SECURITY.md`, `LIVE_INTEGRATION_RESULTS.md`, and `HOSTED_SUPABASE_RUNBOOK.md`; updated the migration audit and live verifier record.
 - Commit message: `fix(security): harden proposals and verify live integrations`.
 - Push status: NOT PUSHED; no Git LFS, hosted migration, deployment, remote user, or hosted row write.
+
+## Stage 12C - Meta Responses diagnostics and staging readiness
+
+- Date: 2026-10-30 (Africa/Lagos).
+- Parent: `29cb213df8285efb4409fa4f6525703a7824fae3` on `feat/original-product-parity`; prior commits, ignored `.env.local`, the pre-existing `.env.example` edit, and the untracked Stage 1 recovery report were preserved.
+- Historical limit: Stage 12B did not retain raw provider bodies, so its HTTP-200 rejection cannot be assigned retrospectively to extraction, truncation, JSON, runtime schema, citation, or grounding. No Stage 12C Meta request was made.
+- Proven parser defect: official Responses output-message status is optional and message content is an array, while the old extractor required `status=completed` and exactly one output-text block. The corrected extractor accepts omitted/completed status, ignores reasoning items, joins ordered text blocks, and explicitly rejects incomplete items and refusals.
+- Diagnostics: fixed non-sensitive categories now distinguish envelope, incomplete, refusal, missing/oversized output, JSON, runtime-schema, citation, grounding, and usage failures. Public API errors remain generic; raw prompts/provider bodies remain unlogged.
+- Grounding: citation membership, supported-answer citation requirements, metadata-only disclosure, and unsupported transcript/page/video claims remain fail-closed. The provider strict schema remains Responses-native `text.format`; application runtime validation retains tighter bounds and uniqueness.
+- Verifier: synthetic-only opt-in remains capped at two requests including retry. Its ceiling is now 800 output tokens because Muse reasoning tokens share `max_output_tokens`; the documented worst-case Standard estimate remains below $0.01. A future live test requires new authorization.
+- Supabase read-only: Auth settings returned 200; Data OpenAPI returned 401; HEAD probes for Memories, Life, Plans, Ready Packs, proposals, and Action Cards returned 404. No local link marker exists. Endpoint connectivity is verified, but project disposability, schema, RLS, auth journeys, and persistence are not.
+- Configuration: configured names remain `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, and `MODEL_API_KEY`. Missing names remain `AUTH_ENABLED`, `AUTH_SITE_URL`, `SUPABASE_SECRET_KEY`, and `META_RATE_LIMIT_MODE`. Exact accepted values and callback/privilege implications are recorded in the hosted runbook; `.env.local` was not changed.
+- Validation: lint PASS; typecheck PASS; deterministic suite PASS 190/190 (187 prior plus three focused response tests); production build PASS; `git diff --check` PASS.
+- Cache audit: after the build, one of 652 ignored `.next` artifacts contained the exact Meta key, under `.next/cache/turbopack`; client-static and deployable output had zero exact matches. This is local compiler-cache retention, not demonstrated client/deployment exposure. Rotation is recommended if the cache left the controlled machine.
+- External operations: no Meta request, hosted write, migration, user creation, project link, Git remote operation, or Git LFS command occurred.

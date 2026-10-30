@@ -28,7 +28,12 @@ All question/evidence text is explicitly untrusted. Developer instructions prohi
 
 ## Structured result and validation
 
-The strict schema contains `answer`, `evidence_status`, unique `cited_memory_ids`, and up to three `proposed_next_steps`, each with unique supporting Memory IDs. The application parses the single completed `output_text` again, enforces lengths/enums/additional-property rules, checks response status/model/`store`, rejects incomplete or over-budget output, and verifies every citation against the exact owner evidence sent. Valid JSON does not bypass evidence checks.
+The strict schema contains `answer`, `evidence_status`, `cited_memory_ids`, and `proposed_next_steps`, each with supporting Memory IDs. The provider schema uses only Meta's supported strict JSON Schema subset; the application then enforces uniqueness, lengths, item counts, enums and exact keys at runtime. The Responses extractor accepts the documented optional message status, ignores reasoning items, combines ordered `output_text` blocks, explicitly rejects refusals/incomplete output, and verifies every citation against the exact owner evidence sent. Valid JSON does not bypass evidence checks.
+
+Sanitized server-side diagnostics distinguish envelope, incomplete, refusal,
+missing/oversized output, invalid JSON, runtime schema, citation, grounding, and
+usage failures. Raw provider output and those internal diagnostic details are
+not returned through the public Ask API.
 
 The browser receives only the validated answer, status, token counts, exact Memory anchors and inert suggestions. It never receives the API key, provider payload or raw provider response. No database mutation, Plan, Ready Pack, reminder, calendar event or tool execution exists in Stage 8.
 
@@ -36,10 +41,10 @@ The browser receives only the validated answer, status, token counts, exact Memo
 
 The application requires `META_RATE_LIMIT_MODE=in-memory` as an explicit operational opt-in. It permits five provider calls per user per minute per server process. This is a real local gate, but not a distributed quota; a multi-instance deployment must replace it with shared atomic enforcement before release. Search/no-match requests do not consume the provider gate.
 
-The API limits the response to 800 tokens and makes at most two provider requests including a transient retry. Standard pricing verified on 2026-10-29 is $1.25 per million input tokens and $4.25 per million output tokens. Token usage is accepted only as non-negative integers and is returned in a minimal usage object. The separate live verifier uses a smaller 384-token ceiling and synthetic evidence.
+The API limits the response to 800 tokens and makes at most two provider requests including a transient retry. Standard pricing verified on 2026-10-29 is $1.25 per million input tokens and $4.25 per million output tokens. Token usage is accepted only as non-negative integers and is returned in a minimal usage object. The separate live verifier uses the same 800-token ceiling and synthetic evidence. Muse Spark reasoning tokens count within that ceiling, so the prior 384-token verifier budget risked leaving too little visible JSON. Its maximum two-request Standard estimate remains below $0.01.
 
 ## Verification boundary and Stage 9
 
-Automated tests use injected fetch responses and test-only owner repositories. They verify request construction, output/citation enforcement, owner isolation, prompt injection handling, status/retry mapping, usage, throttle behavior and fail-closed errors without network calls. Hosted auth, RLS, model access, billing, quality and latency remain unverified.
+Automated tests use injected fetch responses and test-only owner repositories. They verify request construction, official output-envelope variants, refusal/incomplete handling, output/citation enforcement, owner isolation, prompt injection handling, status/retry mapping, usage, throttle behavior and fail-closed errors without network calls. Stage 12B reached the provider but did not produce a locally validated result; because its raw response was intentionally discarded, the exact historical rejection remains unknowable. Hosted auth, RLS, successful grounded model output, quality and latency remain unverified.
 
 Stage 9's smallest boundary is a persistent, owner-bound proposal/confirmation ledger with idempotency keys. It may save a user-approved proposal state, but must not execute external actions yet and must continue to treat Stage 8 next steps as suggestions.

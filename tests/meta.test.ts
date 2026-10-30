@@ -5,7 +5,7 @@ import { AuthFailure } from "../src/lib/auth/policy.ts";
 import { handleAskRequest, type AskContextFactory } from "../src/lib/ai/handler.ts";
 import { callMetaResponses, MetaClientError, metaConfig, type MetaClientDependencies } from "../src/lib/ai/meta/client.ts";
 import { META_ENDPOINT, META_MODEL, parseAskBody, sanitizeSourceUrl, toModelEvidence, validateGroundedAnswer, type GroundedModelAnswer } from "../src/lib/ai/meta/contracts.ts";
-import { buildMetaRequest, createMetaReasoner, type MetaReasoner } from "../src/lib/ai/meta/grounded-reasoning.ts";
+import { buildMetaRequest, createMetaReasoner, extractMetaOutputText, type MetaReasoner } from "../src/lib/ai/meta/grounded-reasoning.ts";
 import { createInMemoryAskRateLimiter } from "../src/lib/ai/rate-limit.ts";
 import type { Memory } from "../src/lib/memory/contracts.ts";
 import type { RetrievalItem } from "../src/lib/retrieval/contracts.ts";
@@ -109,6 +109,44 @@ test("client rejects incomplete, malformed, oversized and over-budget output", a
     await assert.rejects(callMetaResponses(payload, new AbortController().signal, dependencies(async () => response(body))), MetaClientError);
   await assert.rejects(callMetaResponses(payload, new AbortController().signal, dependencies(async () => new Response("x".repeat(70_000), { headers: { "Content-Type": "application/json" } }))), MetaClientError);
   await assert.rejects(createMetaReasoner(dependencies(async () => response(wire("not json"))))("Launch?", [retrieval()], new AbortController().signal), MetaClientError);
+});
+
+test("Responses output extraction accepts optional message status, reasoning items and multiple text blocks", () => {
+  const json = JSON.stringify(answer()); const split = Math.floor(json.length / 2);
+  const body = { ...wire(), output: [
+    { type: "reasoning", id: "reasoning_test", summary: [], status: "completed" },
+    { type: "message", role: "assistant", content: [
+      { type: "output_text", text: json.slice(0, split), annotations: [] },
+      { type: "output_text", text: json.slice(split), annotations: [] },
+    ] },
+  ] };
+  assert.equal(extractMetaOutputText(body), json);
+});
+
+test("Responses output diagnostics distinguish refusal, missing output and incomplete generation", async () => {
+  assert.throws(() => extractMetaOutputText({ output: [{ type: "message", role: "assistant", content: [{ type: "refusal", refusal: "Cannot answer." }] }] }),
+    (error: unknown) => error instanceof MetaClientError && error.diagnostic === "response_refusal");
+  assert.throws(() => extractMetaOutputText({ output: [{ type: "reasoning", id: "r", summary: [] }] }),
+    (error: unknown) => error instanceof MetaClientError && error.diagnostic === "output_missing");
+  const payload = buildMetaRequest("Launch?", toModelEvidence([retrieval()]));
+  await assert.rejects(callMetaResponses(payload, new AbortController().signal, dependencies(async () => response({
+    ...wire(), status: "incomplete", incomplete_details: { reason: "max_output_tokens" },
+  }))), (error: unknown) => error instanceof MetaClientError && error.diagnostic === "response_incomplete");
+});
+
+test("grounded reasoner classifies JSON, schema, citation and grounding failures without weakening validation", async () => {
+  const run = (body: unknown, item = retrieval()) => createMetaReasoner(dependencies(async () => response(body)))("Launch?", [item], new AbortController().signal);
+  await assert.rejects(run(wire("not json")), (error: unknown) => error instanceof MetaClientError && error.diagnostic === "invalid_json");
+  await assert.rejects(run(wire({ answer: "Missing fields" })), (error: unknown) => error instanceof MetaClientError && error.diagnostic === "schema_mismatch");
+  await assert.rejects(run(wire(answer({ cited_memory_ids: [userB] }))), (error: unknown) => error instanceof MetaClientError && error.diagnostic === "citation_mismatch");
+  await assert.rejects(createMetaReasoner(dependencies(async () => response(wire(answer()))))("Launch?", [], new AbortController().signal),
+    (error: unknown) => error instanceof MetaClientError && error.diagnostic === "citation_mismatch");
+  await assert.rejects(run(wire(answer({ cited_memory_ids: [] }))), (error: unknown) => error instanceof MetaClientError && error.diagnostic === "schema_mismatch");
+  const link = retrieval({ sourceType: "link", storedExcerpt: null, sourceUrl: "https://example.test/watch?id=1" });
+  await assert.rejects(run(wire(answer({ answer: "The webpage says ship Tuesday." })), link),
+    (error: unknown) => error instanceof MetaClientError && error.diagnostic === "grounding_violation");
+  const valid = await run(wire(answer()));
+  assert.equal(valid.evidence_status, "supported");
 });
 
 test("client distinguishes non-retryable provider authentication, billing and access failures", async () => {

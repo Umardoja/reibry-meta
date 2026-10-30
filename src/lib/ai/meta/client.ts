@@ -2,9 +2,11 @@ import "server-only";
 import { META_ENDPOINT, META_MODEL, META_REQUEST_BYTES_MAX, META_RESPONSE_BYTES_MAX, type MetaUsage } from "./contracts.ts";
 
 export type MetaFailureCode = "META_NOT_CONFIGURED" | "META_TIMEOUT" | "META_AUTH" | "META_BILLING" | "META_ACCESS" | "META_RATE_LIMIT" | "META_UNAVAILABLE" | "META_INVALID_RESPONSE";
+export type MetaResponseDiagnostic = "envelope_invalid" | "response_incomplete" | "response_refusal" | "output_missing" | "output_too_large" | "invalid_json" | "schema_mismatch" | "citation_mismatch" | "grounding_violation" | "usage_invalid";
 export class MetaClientError extends Error {
   code: MetaFailureCode;
-  constructor(code: MetaFailureCode) { super(code); this.code = code; }
+  diagnostic: MetaResponseDiagnostic | null;
+  constructor(code: MetaFailureCode, diagnostic: MetaResponseDiagnostic | null = null) { super(code); this.code = code; this.diagnostic = diagnostic; }
 }
 export type MetaClientDependencies = { env: Record<string, string | undefined>; fetch: typeof fetch; sleep: (milliseconds: number, signal: AbortSignal) => Promise<void>; random: () => number };
 export type MetaRawResult = { body: unknown; usage: MetaUsage; latencyMs: number };
@@ -26,18 +28,18 @@ export const defaultMetaDependencies: MetaClientDependencies = { env: process.en
 
 async function readBounded(response: Response) {
   const declared = Number(response.headers.get("content-length"));
-  if (Number.isFinite(declared) && declared > META_RESPONSE_BYTES_MAX) throw new MetaClientError("META_INVALID_RESPONSE");
-  if (!response.body) throw new MetaClientError("META_INVALID_RESPONSE");
+  if (Number.isFinite(declared) && declared > META_RESPONSE_BYTES_MAX) throw new MetaClientError("META_INVALID_RESPONSE", "output_too_large");
+  if (!response.body) throw new MetaClientError("META_INVALID_RESPONSE", "envelope_invalid");
   const reader = response.body.getReader(); const chunks: Uint8Array[] = []; let size = 0;
   try {
     while (true) {
       const { done, value } = await reader.read(); if (done) break;
-      size += value.length; if (size > META_RESPONSE_BYTES_MAX) { void reader.cancel(); throw new MetaClientError("META_INVALID_RESPONSE"); }
+      size += value.length; if (size > META_RESPONSE_BYTES_MAX) { void reader.cancel(); throw new MetaClientError("META_INVALID_RESPONSE", "output_too_large"); }
       chunks.push(value);
     }
   } finally { reader.releaseLock(); }
   const bytes = new Uint8Array(size); let offset = 0; for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.length; }
-  try { return JSON.parse(new TextDecoder().decode(bytes)); } catch { throw new MetaClientError("META_INVALID_RESPONSE"); }
+  try { return JSON.parse(new TextDecoder().decode(bytes)); } catch { throw new MetaClientError("META_INVALID_RESPONSE", "envelope_invalid"); }
 }
 function mappedStatus(status: number): MetaFailureCode {
   if (status === 401) return "META_AUTH"; if (status === 402) return "META_BILLING"; if (status === 403 || status === 404) return "META_ACCESS";
@@ -53,7 +55,7 @@ function retryDelay(response: Response, attempt: number, random: () => number) {
 function usage(value: unknown): MetaUsage {
   const item = value && typeof value === "object" ? value as Record<string, unknown> : {};
   const numbers = [item.input_tokens, item.output_tokens, item.total_tokens];
-  if (numbers.some(number => !Number.isSafeInteger(number) || (number as number) < 0)) throw new MetaClientError("META_INVALID_RESPONSE");
+  if (numbers.some(number => !Number.isSafeInteger(number) || (number as number) < 0)) throw new MetaClientError("META_INVALID_RESPONSE", "usage_invalid");
   return { inputTokens: item.input_tokens as number, outputTokens: item.output_tokens as number, totalTokens: item.total_tokens as number };
 }
 
@@ -76,12 +78,13 @@ export async function callMetaResponses(payload: Record<string, unknown>, signal
         try { await response.body?.cancel(); } catch { /* Never surface or log upstream error bodies. */ }
         throw new MetaClientError(mappedStatus(response.status));
       }
-      if (!response.headers.get("content-type")?.toLowerCase().includes("application/json")) throw new MetaClientError("META_INVALID_RESPONSE");
+      if (!response.headers.get("content-type")?.toLowerCase().includes("application/json")) throw new MetaClientError("META_INVALID_RESPONSE", "envelope_invalid");
       const body = await readBounded(response);
       const record = body && typeof body === "object" ? body as Record<string, unknown> : {};
-      if (record.status !== "completed" || record.store !== false || record.model !== config.model || record.incomplete_details) throw new MetaClientError("META_INVALID_RESPONSE");
+      if (record.status === "incomplete" || record.incomplete_details) throw new MetaClientError("META_INVALID_RESPONSE", "response_incomplete");
+      if (record.status !== "completed" || record.store !== false || record.model !== config.model) throw new MetaClientError("META_INVALID_RESPONSE", "envelope_invalid");
       const counted = usage(record.usage); const configuredOutput = payload.max_output_tokens;
-      if (!Number.isSafeInteger(configuredOutput) || (configuredOutput as number) < 16 || counted.outputTokens > (configuredOutput as number)) throw new MetaClientError("META_INVALID_RESPONSE");
+      if (!Number.isSafeInteger(configuredOutput) || (configuredOutput as number) < 16 || counted.outputTokens > (configuredOutput as number)) throw new MetaClientError("META_INVALID_RESPONSE", "usage_invalid");
       return { body, usage: counted, latencyMs: Date.now() - started };
     } catch (error) {
       if (error instanceof MetaClientError) throw error;

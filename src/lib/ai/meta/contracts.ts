@@ -45,7 +45,11 @@ export type AskResponse = GroundedModelAnswer & {
   action_proposals: ActionProposalView[];
 };
 
-export class MetaContractError extends Error {}
+export type MetaContractFailure = "schema_mismatch" | "citation_mismatch" | "grounding_violation";
+export class MetaContractError extends Error {
+  reason: MetaContractFailure;
+  constructor(message: string, reason: MetaContractFailure = "schema_mismatch") { super(message); this.reason = reason; }
+}
 
 export const groundedAnswerSchema = {
   type: "object",
@@ -124,20 +128,20 @@ export function validateGroundedAnswer(value: unknown, evidence: ModelEvidence[]
     throw new MetaContractError("Model output does not match the grounded answer contract.");
   const available = new Map(evidence.map(item => [item.memory_id, item]));
   const cited = object.cited_memory_ids as string[];
-  if (cited.some(id => !available.has(id))) throw new MetaContractError("Model cited an unknown Memory.");
+  if (cited.some(id => !available.has(id))) throw new MetaContractError("Model cited an unknown Memory.", "citation_mismatch");
   const steps = object.proposed_next_steps.map(step => {
     if (!step || typeof step !== "object") throw new MetaContractError("Invalid proposed next step.");
     const item = step as Record<string, unknown>;
     if (!exactKeys(item, ["title", "description", "supporting_memory_ids"]) || !boundedString(item.title, 100) ||
-        !boundedString(item.description, 400) || !strings(item.supporting_memory_ids, META_EVIDENCE_MAX) ||
-        (item.supporting_memory_ids as string[]).some(id => !available.has(id))) throw new MetaContractError("Invalid proposed next step.");
+        !boundedString(item.description, 400) || !strings(item.supporting_memory_ids, META_EVIDENCE_MAX)) throw new MetaContractError("Invalid proposed next step.");
+    if ((item.supporting_memory_ids as string[]).some(id => !available.has(id))) throw new MetaContractError("Proposed next step cited an unknown Memory.", "citation_mismatch");
     return { title: item.title as string, description: item.description as string, supporting_memory_ids: item.supporting_memory_ids as string[] };
   });
   if (object.evidence_status !== "insufficient" && cited.length === 0) throw new MetaContractError("A supported answer must cite supplied evidence.");
   const referenced = [...cited, ...steps.flatMap(step => step.supporting_memory_ids)];
   const citedMetadataOnly = referenced.some(id => available.get(id)?.source_provenance.kind === "metadata-only-link");
   const combined = [object.answer as string, ...steps.map(step => step.description)].join(" ");
-  if (citedMetadataOnly && unsupportedMetadataClaim.test(combined)) throw new MetaContractError("Model claimed unavailable source content.");
-  if (citedMetadataOnly && !/metadata|saved title|limited evidence/i.test(object.answer as string)) throw new MetaContractError("Metadata-only evidence limitation was omitted.");
+  if (citedMetadataOnly && unsupportedMetadataClaim.test(combined)) throw new MetaContractError("Model claimed unavailable source content.", "grounding_violation");
+  if (citedMetadataOnly && !/metadata|saved title|limited evidence/i.test(object.answer as string)) throw new MetaContractError("Metadata-only evidence limitation was omitted.", "grounding_violation");
   return { answer: object.answer as string, evidence_status: object.evidence_status as EvidenceStatus, cited_memory_ids: cited, proposed_next_steps: steps };
 }

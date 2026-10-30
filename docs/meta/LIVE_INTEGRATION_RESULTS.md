@@ -12,8 +12,8 @@ responses, or authorization headers were logged or recorded.
 | Connected | VERIFIED | Configured host was valid Supabase HTTPS; Auth settings returned HTTP 200. |
 | Auth service reachable | VERIFIED | Read-only settings request succeeded. |
 | Application auth configured | NOT READY | `.env.local` lacks `AUTH_ENABLED` and `AUTH_SITE_URL`. |
-| Data API available | INCONCLUSIVE | OpenAPI returned HTTP 401 with the publishable key. |
-| Required schema ready | NOT VERIFIED | Read-only `memories` HEAD returned HTTP 404; no schema paths could be inspected. |
+| Data API available | INCONCLUSIVE | OpenAPI again returned HTTP 401 with the publishable key. |
+| Required schema ready | NO | Read-only HEAD probes for Memories, Life, Plans, Ready Packs, proposals, and Action Cards all returned HTTP 404. |
 | Hosted RLS | NOT VERIFIED | No authenticated test users or row operations were authorized. |
 | Hosted persistence | NOT VERIFIED | Hosted writes were explicitly prohibited. |
 | Disposable project identity | NOT ESTABLISHED | URL/credentials do not prove purpose or disposability. |
@@ -43,8 +43,16 @@ provider schema while equivalent and stricter length/count/uniqueness checks
 remain in application runtime validation.
 
 The second and final request reached HTTP 200 with `muse-spark-1.3`, but the
-response still failed local structured/grounding validation as
-`META_INVALID_RESPONSE`. No retry occurred. No further request was made.
+response still failed local validation as `META_INVALID_RESPONSE`. No retry
+occurred. Because the raw body was deliberately discarded, the historical
+failure cannot now be assigned to extraction, truncation, JSON, schema,
+citation, or grounding with certainty.
+
+Stage 12C found and fixed a documented extractor defect: an output message's
+status is optional and message content may contain multiple output-text blocks,
+while the old parser required `status=completed` and exactly one block. It also
+added explicit refusal/incomplete and downstream validation categories. These
+changes are fixture-verified only; **no Stage 12C Meta request was made**.
 
 - Requests attempted: 2 total.
 - Provider transport/model access: reached HTTP 200 on the final request.
@@ -56,15 +64,16 @@ response still failed local structured/grounding validation as
   than $0.01 combined.
 - Raw responses: deliberately discarded and never printed.
 
-Stage 12C needs separate authorization if diagnostic response-shape telemetry
-or another billable request is desired. It must retain synthetic evidence and a
-new explicit request/cost ceiling.
+A future live retest needs separate authorization. It must retain synthetic
+evidence and a new explicit total request/cost ceiling.
 
 ## Final local regression
 
 - `npm run lint`: PASS.
 - `npm run typecheck`: PASS.
-- `npm test`: PASS, 187/187 (the prior 183 plus four provenance tests).
+- Stage 12C pre-documentation regression: PASS, 190/190 (187 prior plus three
+  response-envelope/diagnostic tests). Final validation is recorded in the
+  Stage 12C migration-log entry.
 - `npm run build`: PASS with the complete restored route manifest.
 - `git diff --check`: PASS.
 - Generated client-static bundle scan: 25 files, zero exact `MODEL_API_KEY`
@@ -73,6 +82,19 @@ new explicit request/cost ceiling.
   Turbopack cache files. The exact `.next/cache/turbopack` directory was removed;
   a post-clean scan of 639 remaining build files found zero exact-key matches.
   Client and deployable server output contained no exact key.
+
+Stage 12C reproduced the cache behavior after a successful production build:
+one of 652 scanned files, under ignored `.next/cache/turbopack`, contained the
+exact `MODEL_API_KEY`; client-static and deployable output each had zero exact
+matches. This is consistent with Turbopack retaining a server compilation input
+after Next loaded `.env.local`, not with a shipped client bundle. The cache was
+not committed or uploaded. Rotate the key if this workspace/cache has been
+shared, synchronized, backed up to an untrusted location, or otherwise exposed;
+local presence on the controlled machine alone does not prove external leakage.
+
+Stage 12C final validation: lint PASS; typecheck PASS; 190/190 deterministic
+tests PASS; production build PASS; `git diff --check` PASS. Standard validation
+made no Meta request and no hosted Supabase mutation.
 
 Ordinary tests and the build made no Meta request and performed no hosted
 Supabase mutation.
