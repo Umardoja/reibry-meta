@@ -55,16 +55,18 @@ from crossing user boundaries. Mutation functions derive identity from
   verifies identity with `auth.getUser()`. No user-facing service-role client
   was found.
 
-## Residual risks and approval blockers
+## Stage 12B provenance resolution and residual risks
 
-Owner isolation does not prove server provenance. In particular,
-`create_action_proposals` is callable by an authenticated owner. A user with
-their own JWT can supply arbitrary bounded proposal text and their own Memory
-IDs, then confirm it. This cannot disclose another user's data, but the stored
-model provenance is not cryptographically attested. Closing this gap requires
-an explicit architecture decision, such as a narrowly privileged server-only
-attestation boundary; it must not be addressed by adding a service-role key to
-ordinary request handling.
+Stage 12B adds a seventh migration that drops the authenticated proposal RPC,
+introduces service-only trusted creation, records a server request identity,
+and blocks confirmation of legacy-unverified proposals. The elevated client is
+isolated to this operation; ordinary owner reads and writes remain user-scoped.
+This resolves the direct authenticated forgery path locally.
+
+The guarantee is server-controlled provenance, not cryptographic model
+attestation. A compromised application server or leaked Supabase secret could
+still forge a proposal. The seventh migration and `SUPABASE_SECRET_KEY` are not
+configured/applied in a hosted environment, so the fix is not live.
 
 Likewise, permitted direct Memory and Life writes are owner-isolated but are
 not proof that content passed through the application API. If release policy

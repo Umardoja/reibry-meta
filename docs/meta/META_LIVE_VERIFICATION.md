@@ -1,6 +1,10 @@
 # Controlled Meta live verification
 
-Live Meta inference is **NOT VERIFIED**. Stage 8 did not receive a credential and no billable request was authorized or executed.
+Live Meta inference remains **NOT VERIFIED**. Stage 12B received authorization
+for two synthetic requests. The first failed `META_INVALID_RESPONSE`; after
+aligning the provider schema with the documented strict subset, the second
+reached HTTP 200 but still failed local structured/grounding validation. No raw
+response was retained, and no further request was made.
 
 ## Owner approval gate
 
@@ -27,4 +31,7 @@ At Standard rates verified on 2026-10-29, the pessimistic two-request estimate i
 - `META_TIMEOUT` / `META_UNAVAILABLE`: transport or provider availability failure.
 - `META_INVALID_RESPONSE`: response status, token usage, structured JSON or citation validation failed.
 
-Only a `status=PASS ... validation=PASS` line proves this synthetic inference worked. It does not verify personal-Memory privacy, hosted Supabase ownership, production latency, distributed throttling or general answer quality. Record the timestamp, safe output and exact local commit after an authorized run; never record the credential or raw response.
+Only a `status=PASS ... validation=PASS` line proves this synthetic inference
+worked. Stage 12B did not produce that line. Token counts and actual cost were
+unavailable; the two-request combined ceiling remained below $0.01. See
+`LIVE_INTEGRATION_RESULTS.md` for the sanitized result.

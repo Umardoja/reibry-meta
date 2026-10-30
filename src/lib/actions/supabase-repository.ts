@@ -11,7 +11,9 @@ function failure(error: { code?: string } | null | undefined): never {
 }
 function rows(value: unknown) { return Array.isArray(value) ? value as Record<string, unknown>[] : []; }
 
-export function createSupabaseActionRepository(client: SupabaseClient, ownerId: string): ActionRepository {
+export type TrustedProposalOptions = { client: () => SupabaseClient; requestId?: () => string };
+
+export function createSupabaseActionRepository(client: SupabaseClient, ownerId: string, trusted?: TrustedProposalOptions): ActionRepository {
   async function memoryMap(proposalIds: string[]) {
     if (!proposalIds.length) return new Map<string, string[]>();
     const { data, error } = await client.from("action_proposal_memories").select("proposal_id,memory_id")
@@ -34,8 +36,12 @@ export function createSupabaseActionRepository(client: SupabaseClient, ownerId: 
     ownerId,
     async createProposals(inputs, modelProvenance) {
       if (!inputs.length) return [];
+      if (!trusted) return failure(null);
       const payload = inputs.map(item => ({ title: item.title, description: item.description, supporting_memory_ids: item.supportingMemoryIds }));
-      const { data, error } = await client.rpc("create_action_proposals", { p_items: payload, p_model_provenance: modelProvenance });
+      const { data, error } = await trusted.client().rpc("create_trusted_action_proposals", {
+        p_user_id: ownerId, p_items: payload, p_model_provenance: modelProvenance,
+        p_request_id: (trusted.requestId ?? (() => globalThis.crypto.randomUUID()))(),
+      });
       if (error || !data) return failure(error); return proposals(data);
     },
     async listProposals() {

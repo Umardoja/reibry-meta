@@ -51,16 +51,16 @@ export const groundedAnswerSchema = {
   type: "object",
   additionalProperties: false,
   properties: {
-    answer: { type: "string", minLength: 1, maxLength: 2_000 },
+    answer: { type: "string" },
     evidence_status: { type: "string", enum: ["supported", "partial", "insufficient"] },
-    cited_memory_ids: { type: "array", maxItems: META_EVIDENCE_MAX, uniqueItems: true, items: { type: "string" } },
+    cited_memory_ids: { type: "array", items: { type: "string" } },
     proposed_next_steps: {
-      type: "array", maxItems: 3, items: {
+      type: "array", items: {
         type: "object", additionalProperties: false,
         properties: {
-          title: { type: "string", minLength: 1, maxLength: 100 },
-          description: { type: "string", minLength: 1, maxLength: 400 },
-          supporting_memory_ids: { type: "array", maxItems: META_EVIDENCE_MAX, uniqueItems: true, items: { type: "string" } },
+          title: { type: "string" },
+          description: { type: "string" },
+          supporting_memory_ids: { type: "array", items: { type: "string" } },
         },
         required: ["title", "description", "supporting_memory_ids"],
       },

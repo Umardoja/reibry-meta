@@ -11,6 +11,7 @@ import { createSupabaseLifeRepository } from "../life/supabase-repository.ts";
 import { createSupabaseMemoryRepository } from "../memory/supabase-repository.ts";
 import { cookieJar, isAuthCookie } from "../supabase/cookies.ts";
 import { createUserSupabaseClient } from "../supabase/server.ts";
+import { createTrustedProposalClient } from "../supabase/trusted-server.ts";
 import { handleHomeRequest, homePrivateHeaders } from "./handler.ts";
 
 export async function homeApiRoute(request: Request) {
@@ -23,7 +24,8 @@ export async function homeApiRoute(request: Request) {
     if (error) { if (missingSession(error)) throw new AuthFailure("AUTH_REQUIRED"); throw providerFailure(error); }
     if (!data.user?.id) throw new AuthFailure("AUTH_REQUIRED");
     return { userId: data.user.id, memoryRepository: createSupabaseMemoryRepository(client, data.user.id),
-      lifeRepository: createSupabaseLifeRepository(client, data.user.id), actionRepository: createSupabaseActionRepository(client, data.user.id) };
+      lifeRepository: createSupabaseLifeRepository(client, data.user.id),
+      actionRepository: createSupabaseActionRepository(client, data.user.id, { client: () => createTrustedProposalClient(signal) }) };
   }, createMetaReasoner(), sharedAskRateLimiter, origin);
   const response = NextResponse.json({ data: result.data, error: result.error }, { status: result.status, headers: homePrivateHeaders });
   return applyAuthCookies(response, result.status === 401 ? jar.clear() : result.error ? [] : jar.writes(), origin.startsWith("https:"));

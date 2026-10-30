@@ -18,17 +18,20 @@ if (process.env.META_LIVE_VERIFY !== authorization) {
     displayTitle: "Synthetic launch checklist", sourceType: "text", storedExcerpt: "Synthetic evidence: review accessibility before the demo.",
     matchedSourceMetadata: [], sourceUrl: null, processingStatus: "complete", match: { reason: "Synthetic note text matches.", score: 100, fields: ["note"] },
   };
-  let requests = 0;
-  const countedFetch: typeof fetch = async (input, init) => { requests++; if (requests > 2) throw new Error("Live verification request ceiling exceeded."); return fetch(input, init); };
+  let requests = 0; let lastHttpStatus: number | null = null;
+  const countedFetch: typeof fetch = async (input, init) => {
+    requests++; if (requests > 2) throw new Error("Live verification request ceiling exceeded.");
+    const response = await fetch(input, init); lastHttpStatus = response.status; return response;
+  };
   const reasoner = createMetaReasoner({ ...defaultMetaDependencies, env: { MODEL_API_KEY: process.env.MODEL_API_KEY, META_RATE_LIMIT_MODE: "in-memory" }, fetch: countedFetch }, 384);
   const started = performance.now();
   try {
     const result = await reasoner("What does the synthetic launch checklist require?", [synthetic], new AbortController().signal);
     const usage = result.usage!; const estimatedCost = usage.inputTokens / 1_000_000 * 1.25 + usage.outputTokens / 1_000_000 * 4.25;
-    console.log(`status=PASS model=${META_MODEL} latency_ms=${Math.round(performance.now() - started)} requests=${requests} input_tokens=${usage.inputTokens} output_tokens=${usage.outputTokens} total_tokens=${usage.totalTokens} estimated_usd=${estimatedCost.toFixed(6)} validation=PASS`);
+    console.log(`status=PASS model=${META_MODEL} http_status=${lastHttpStatus ?? "none"} latency_ms=${Math.round(performance.now() - started)} requests=${requests} input_tokens=${usage.inputTokens} output_tokens=${usage.outputTokens} total_tokens=${usage.totalTokens} estimated_usd=${estimatedCost.toFixed(6)} validation=PASS`);
   } catch (error) {
     const code = error && typeof error === "object" && "code" in error ? String(error.code) : "META_UNAVAILABLE";
-    console.error(`status=FAIL model=${META_MODEL} requests=${requests} category=${code} validation=FAIL`);
+    console.error(`status=FAIL model=${META_MODEL} http_status=${lastHttpStatus ?? "none"} requests=${requests} category=${code} validation=FAIL`);
     process.exitCode = 1;
   }
 }

@@ -283,3 +283,18 @@
 - Documentation: added `DATABASE_MIGRATION_AUDIT.md` and `LOCAL_SUPABASE_VERIFICATION.md` with the migration graph, findings, residual risks, observed results, and an owner-approved Stage 12B hosted review procedure.
 - Commit message: `test(db): audit migration chain and owner isolation`.
 - Push status: NOT PUSHED; no remote, Git LFS, hosted migration, provider or external action operation authorized.
+
+## Stage 12B - Trusted proposal provenance and live integration verification
+
+- Date: 2026-10-30 (Africa/Lagos).
+- Parent: `90186a794b0dabc023ce950a3f043cf85460eb30` on `feat/original-product-parity`; prior commits, the pre-existing `.env.example` edit, ignored `.env.local`, and the untracked Stage 1 recovery report were preserved.
+- Provenance fix: added migration `20261030030000_trusted_action_proposals.sql`, which drops the authenticated creation RPC, grants trusted creation only to `service_role`, records server request identity/item order, enforces exact idempotent replay, rechecks same-owner Memories, and prevents confirmation of legacy-unverified proposals.
+- Server boundary: the user session is still verified through `auth.getUser()`. Muse output and citations are runtime validated before a server-only `SUPABASE_SECRET_KEY` client calls only the trusted RPC. Ordinary reads, confirmation/rejection, and every other domain remain on non-elevated owner clients. The guarantee is server-controlled, not cryptographic attestation.
+- Local database: all seven migrations applied to a fresh unexposed PostgreSQL 17 container. All five rollback-only SQL suites passed. ACL checks proved authenticated=false, anon=false, service_role=true for trusted creation and that the old RPC is absent. The exact container and volume were removed.
+- Supabase live: configured HTTPS host and Auth settings are reachable (`200`), but Data API OpenAPI returned `401` and a read-only Memories probe returned `404`. Project disposability and schema readiness could not be established. No hosted write, migration, user creation, or authenticated test occurred. Hosted RLS/persistence remain **NOT VERIFIED**.
+- Configuration: only `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, and `MODEL_API_KEY` were configured in ignored `.env.local`. `AUTH_ENABLED`, `AUTH_SITE_URL`, `META_RATE_LIMIT_MODE`, and `SUPABASE_SECRET_KEY` remain absent.
+- Meta live: exactly two authorized synthetic requests were made. The first failed safe validation; the final request reached HTTP 200 but also returned `META_INVALID_RESPONSE`. Structured output, grounded inference, token usage, and actual cost remain unverified/unavailable; the combined verifier ceiling was below $0.01. No raw response or secret was logged.
+- Validation: focused proposal/Meta/Action/Home tests passed; lint PASS; typecheck PASS; 187/187 tests PASS (183 prior plus four provenance cases); production build PASS; git diff check PASS. Client/deployable output contained no exact key. Eight ignored Turbopack cache files retained the build-time Meta key; the exact cache was removed and a 639-file post-clean scan found zero exact-key matches.
+- Documentation: added `PROPOSAL_PROVENANCE_SECURITY.md`, `LIVE_INTEGRATION_RESULTS.md`, and `HOSTED_SUPABASE_RUNBOOK.md`; updated the migration audit and live verifier record.
+- Commit message: `fix(security): harden proposals and verify live integrations`.
+- Push status: NOT PUSHED; no Git LFS, hosted migration, deployment, remote user, or hosted row write.

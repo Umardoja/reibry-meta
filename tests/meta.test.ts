@@ -53,6 +53,7 @@ test("Meta request uses current Responses fields, Standard Muse Spark, store=fal
   assert.equal(payload.model, "muse-spark-1.3"); assert.equal(payload.store, false); assert.equal(payload.max_output_tokens, 800);
   assert.deepEqual(payload.tools, []); assert.equal(payload.text.format.type, "json_schema"); assert.equal(payload.text.format.strict, true);
   assert.equal("response_format" in payload, false); assert.equal(JSON.stringify(payload).includes("contributor"), false);
+  assert.doesNotMatch(JSON.stringify(payload.text.format.schema), /minLength|maxLength|maxItems|uniqueItems/);
 });
 
 test("configuration requires a server-only key shape and explicit in-memory budget gate", () => {
