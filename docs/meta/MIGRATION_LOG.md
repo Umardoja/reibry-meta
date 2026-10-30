@@ -424,3 +424,37 @@
 - Validation: lint PASS; typecheck PASS; 195/195 tests PASS (191 plus four new conflict/404/session cases); build PASS; `git diff --check` PASS. The secret key appeared only in ignored Turbopack cache files.
 - External safety: no new users, Auth-setting changes, resets, repairs, session terminations, Meta requests, Git remote or LFS operations, deployments, or original REIBRY changes. Docker Desktop was started for the isolated test and quit afterwards; it briefly auto-started unrelated local containers.
 - Push status: NOT PUSHED.
+
+## Stage 12G - Authentication email verification and deployment readiness
+
+- Date: 2026-10-30 (Africa/Lagos).
+- Parent: `8a601ae2b868a82f899ea41716c7b3cb29885f8c` on `feat/original-product-parity`. The pre-existing `.env.example` edit, ignored `.env.local`, untracked Stage 1 recovery report, and ignored `.auth/` and `test-results/` were preserved and not staged. The CLI still saw the linked project, whose reference matched.
+- Auth:
+  - Hosted email confirmation remains required.
+  - Sign-up issues no session before verification.
+  - Invalid or expired callback codes redirect to `/auth?error=INVALID_CALLBACK` and set no session.
+  - Four open-redirect variants stayed on the app origin.
+  - Sign-up validation rejects input before any provider call.
+  - Password reset is not implemented.
+  - Real email delivery is BLOCKED: Supabase's built-in SMTP delivers only to team members at 2 messages/hour, and no owner inbox or custom SMTP was available.
+  - The redirect allowlist and email template are unverified; they need the dashboard.
+- Deployment audit:
+  - Seven server-only environment variable names, and no `NEXT_PUBLIC_*`.
+  - Secret readers are `server-only`.
+  - No `console` logging.
+  - Bounded timeouts and fixed model error codes.
+  - Same-origin mutation guard.
+  - Added `.vercelignore`, because Vercel's default CLI exclusions do not cover `.auth/`, `test-results/`, `supabase/.temp/` or the private incident report.
+- Rate limiting: documented a Postgres-backed atomic per-user quota (`consume_meta_quota`, `META_RATE_LIMIT_MODE=shared`, fail closed, no `40001`) using the existing Supabase project at $0 incremental cost. Not implemented; this needs approval and a migration.
+- Browser QA (headless Chrome over CDP, fresh real session for synthetic User A):
+  - 10 pages × 390/430/1440: 0 overflow, 0 off-screen elements, 0 unnamed controls, no cross-user data. The only error was a missing favicon.
+  - The keyboard Tab skip of `<main>` is intermittent at all widths and not mobile-specific; this corrects Stage 12F-2. It remains unresolved and needs a manual or physical-device check.
+  - Two original design-reference prototype screens were viewed read-only. Their differences match the documented, deliberate source-based parity choices.
+- Publication:
+  - The full-history scan (4 refs, 424 blobs) found no secrets, test credentials, project reference, LFS pointers, or binary or private paths.
+  - The local reflog records a 2026-10-27 push of 4 commits to `origin/main`.
+  - `main` is an ancestor of the feature branch, so integration is a fast-forward.
+  - The remote LFS incident remains unresolved, and there is no license.
+- Documentation: added `RELEASE_READINESS.md` and `DEMO_SCRIPT.md`, rewrote `README.md` for submission, and corrected the Stage 12F-2 keyboard note.
+- External safety: no Git push, fetch or LFS, no deployment, no hosted schema or Auth change, no Meta request, no new or deleted users, and no original REIBRY modification.
+- Push status: NOT PUSHED.

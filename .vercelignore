@@ -1,0 +1,24 @@
+# Vercel CLI uploads everything except its short default list (.env.local, .next, .vercel,
+# node_modules, ...). Keep private local state out of CLI deployments as well.
+.env
+.env.*
+!.env.example
+.auth/
+sessions/
+secrets/
+private/
+test-results/
+playwright-report/
+playwright/.auth/
+coverage/
+demo-output/
+design-reference/
+supabase/.temp/
+docs/meta/STAGE1_RECOVERY_REPORT.md
+*.pem
+*.key
+*.p12
+*.pfx
+credentials*.json
+*.log
+*.tsbuildinfo

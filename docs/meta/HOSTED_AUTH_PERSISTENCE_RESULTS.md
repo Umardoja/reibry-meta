@@ -295,6 +295,10 @@ Home and Ask were rendered but never submitted, so no Muse request occurred.
   programmatic focus works).
 - This looks like an emulation artifact, not an app defect. It needs a
   real-device or real-keyboard check.
+- **Correction (Stage 12G):** repeated trials showed the skip also happens at
+  1440px with no emulation, and nondeterministically on the same page. It is
+  therefore not mobile-specific, and its cause is unresolved. See
+  [RELEASE_READINESS.md](RELEASE_READINESS.md#keyboard-focus-unresolved-and-not-mobile-specific).
 
 **Not claimed:** visual parity with original REIBRY. The screenshots show the
 Meta Edition UI only; no side-by-side comparison was made.
