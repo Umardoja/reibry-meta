@@ -251,3 +251,32 @@ h1 { font-size: clamp(2.75rem, 6vw, 4.5rem); line-height: 1.08; letter-spacing: 
 .life-delete-confirm { display: grid; gap: 12px; }
 .state-panel-error { border-color: rgba(154,18,18,.2); color: var(--error); }
 @media (max-width: 430px) { .life-manage-actions .button { flex: 1; } }
+
+/* Stage 11B Today presentation ported from REIBRY Original globals.css. */
+.today-meta-row { display: flex; align-items: center; justify-content: space-between; padding: var(--sp-md) var(--gutter) 0; }
+.today-greeting { padding: 6px var(--gutter) var(--sp-xl); }
+.greeting-h { font-size: 24px; font-weight: 700; color: var(--on-surface); letter-spacing: -.02em; line-height: 1.2; margin-bottom: 6px; }
+.greeting-hint { font-size: 14px; color: var(--on-surface-var); line-height: 1.55; }
+.resurfaced-list { padding: 0 var(--gutter); display: flex; flex-direction: column; gap: var(--sp-md); }
+.hero-card { background: var(--surface); border-radius: var(--r-xl); border: 1px solid var(--border-hair); box-shadow: var(--shadow-card); overflow: hidden; }
+.hero-body { padding: 14px; }
+.why-now-pill { display: inline-flex; align-items: center; gap: 5px; background: rgba(15,107,92,.1); color: var(--primary-mid); font-size: 12px; font-weight: 600; border-radius: 999px; padding: 4px 11px; margin: 0 6px 6px 0; }
+.life-pill { display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--border-focus); color: var(--primary-mid); font-size: 12px; font-weight: 500; border-radius: 999px; padding: 3px 10px; margin-bottom: 6px; text-decoration: none; }
+.hero-title { font-size: 17px; font-weight: 700; color: var(--on-surface); letter-spacing: -.015em; line-height: 1.3; margin-bottom: 6px; }
+.hero-desc { font-size: 13px; color: var(--on-surface-var); line-height: 1.55; margin-bottom: 12px; }
+.compact-card { background: var(--surface); border-radius: var(--r-lg); border: 1px solid var(--border-hair); box-shadow: var(--shadow-card); padding: var(--sp-lg); }
+.compact-source-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: var(--sp-sm); }
+.compact-source { font-size: 12px; color: var(--outline); font-weight: 500; overflow-wrap: anywhere; }
+.compact-saved { font-size: 11px; color: var(--outline-var); text-transform: capitalize; }
+.compact-title { font-size: 16px; font-weight: 700; color: var(--on-surface); letter-spacing: -.015em; line-height: 1.3; margin-bottom: 5px; }
+.compact-desc { font-size: 13px; color: var(--on-surface-var); line-height: 1.5; margin-bottom: 10px; }
+.why-box { background: var(--surface-low); border-radius: var(--r-md); border: 1px solid var(--border-hair); padding: 12px 14px; margin-bottom: 12px; }
+.why-box-title { font-size: 13px; font-weight: 600; color: var(--on-surface); margin-bottom: 4px; }
+.why-box-text { font-size: 13px; color: var(--on-surface-var); line-height: 1.5; }
+.today-secondary { padding: 24px var(--gutter) 0; }
+.today-secondary .results-header { margin-bottom: 12px; }
+.today-life-list { display: grid; gap: 8px; }
+.today-life-row { display: grid; grid-template-columns: 5.5rem minmax(0,1fr) auto; align-items: center; gap: 10px; min-height: 52px; padding: 11px 13px; border: 1px solid var(--outline-var); border-radius: 14px; background: var(--surface); text-decoration: none; }
+.today-life-date, .today-life-time { font-size: 12px; color: var(--on-surface-var); }
+.today-life-title { font-weight: 700; overflow-wrap: anywhere; }
+@media (max-width: 430px) { .today-life-row { grid-template-columns: 4.6rem minmax(0,1fr) auto; } }

@@ -12,7 +12,7 @@
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "next typegen && tsc --noEmit",
-    "test": "node --conditions=react-server --experimental-strip-types --test tests/auth.test.ts tests/memory.test.ts tests/capture.test.ts tests/retrieval.test.ts tests/meta.test.ts tests/actions.test.ts tests/life.test.ts tests/smoke.mjs",
+    "test": "node --conditions=react-server --experimental-strip-types --test tests/auth.test.ts tests/memory.test.ts tests/capture.test.ts tests/retrieval.test.ts tests/meta.test.ts tests/actions.test.ts tests/life.test.ts tests/today.test.ts tests/smoke.mjs",
     "verify:meta": "node --conditions=react-server --experimental-strip-types scripts/verify-meta.ts"
   },
   "dependencies": {

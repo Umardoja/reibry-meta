@@ -1,4 +1,4 @@
 import type { LifeContext, LifeUpdate, NewLifeContext } from "./contracts.ts";
 export type LifeRepositoryFailureCode = "NOT_FOUND" | "STORAGE_UNAVAILABLE";
 export class LifeRepositoryFailure extends Error { code: LifeRepositoryFailureCode; constructor(code: LifeRepositoryFailureCode) { super(code === "NOT_FOUND" ? "Life context not found." : "Life storage is unavailable."); this.code = code; } }
-export interface LifeRepository { readonly ownerId: string; createUnique(input: NewLifeContext, dedupeKey: string): Promise<{ context: LifeContext; duplicate: boolean }>; list(): Promise<LifeContext[]>; read(id: string): Promise<LifeContext>; update(id: string, input: LifeUpdate): Promise<LifeContext>; delete(id: string): Promise<void>; }
+export interface LifeRepository { readonly ownerId: string; createUnique(input: NewLifeContext, dedupeKey: string): Promise<{ context: LifeContext; duplicate: boolean }>; list(): Promise<LifeContext[]>; listUpcoming(fromIso: string, limit: number): Promise<LifeContext[]>; read(id: string): Promise<LifeContext>; update(id: string, input: LifeUpdate): Promise<LifeContext>; delete(id: string): Promise<void>; }

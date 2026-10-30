@@ -91,6 +91,9 @@ test("production app serves the restored REIBRY shell and its stylesheet", async
     const life = await fetch(origin + "/api/life");
     assert.equal(life.status, 401);
     assert.equal((await life.json()).error.code, "AUTH_REQUIRED");
+    const today = await fetch(origin + "/api/today");
+    assert.equal(today.status, 401);
+    assert.equal((await today.json()).error.code, "AUTH_REQUIRED");
     const lifeCreate = await fetch(origin + "/api/life/create", {
       method: "POST", headers: { Origin: origin, "Sec-Fetch-Site": "same-origin", "Content-Type": "application/json" },
       body: JSON.stringify({ text: "must not persist without a session", timezone: "UTC" }),
@@ -130,6 +133,9 @@ test("production app serves the restored REIBRY shell and its stylesheet", async
     const lifeManagePage = await fetch(origin + "/life/manage", { redirect: "manual" });
     assert.equal(lifeManagePage.status, 307);
     assert.match(lifeManagePage.headers.get("location"), /\/auth\?next=/);
+    const todayPage = await fetch(origin + "/today", { redirect: "manual" });
+    assert.equal(todayPage.status, 307);
+    assert.match(todayPage.headers.get("location"), /\/auth\?next=/);
     const rejected = await fetch(origin + "/api/auth/sign-in", { method: "POST", headers: { Origin: origin, "Content-Type": "application/json" },
       body: JSON.stringify({ email: "person@example.test", password: "test-only-password" }) });
     assert.equal(rejected.status, 503);

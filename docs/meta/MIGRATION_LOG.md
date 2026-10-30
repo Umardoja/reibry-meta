@@ -199,3 +199,21 @@
 - Meta preservation: Stage 8 reasoning/citation validation and Stage 9 proposal/Action Card modules, routes, migrations and regression tests remain intact.
 - Commit message: `port(life): restore original Life workflows`.
 - Push status: NOT PUSHED; no remote, Git LFS, hosted migration or provider operation authorized.
+
+## Stage 11B - Original Today and contextual Memory resurfacing
+
+- Date: 2026-10-30 (Africa/Lagos).
+- Parent: `2f99781ecf22fccfbb15865243cf85590af2ffe5` on `feat/original-product-parity`; all prior commits and the untracked Stage 1 recovery report were preserved.
+- Inherited implementation: ported the composition from original `src/app/today/page.tsx`, bounded owner reads from `src/lib/data/supabase-store.ts`, three-item ranking/proximity behavior from `src/lib/integration/today-ranking.ts`, and literal matching concepts from the original orchestrator at source commit `76d3494465bab43a5051498e90b9a486a65312b9`.
+- UI: restored “Why now,” “Here’s what matters today,” the original hero/compact resurfaced-card hierarchy, “Why this came back,” Upcoming Life chronology, exact resource navigation and original loading/empty/error treatment. No fixture records are used in production.
+- Service/API: added protected `GET /api/today`, an eight-second server boundary and one owner-checked service over the existing Memory and Life repositories. It scans at most 50 active dated Life contexts and 250 Memories, considers 12 contexts and returns at most three unique evidence-backed Memory matches plus three upcoming Life rows.
+- Matching: deterministic normalized term overlap uses only saved title, note text, whitelisted stored metadata and hostname. Generic Life/date words are excluded; candidates require 25% term coverage or two distinct literal hits. Link matches are explicitly metadata-only. Processing records can surface only from stored evidence; failed and unrelated records do not.
+- Safety adaptation: unlike the original automatic context matcher, Stage 11B does not persist associations, call an AI provider, create proposals/actions, schedule reminders or execute tools. Existing `memory_context_matches` remains read-only to authenticated clients.
+- Ownership: the verified session creates both non-elevated repositories for one user; repository IDs and returned rows are rechecked. Filters/user IDs cannot be supplied. Responses are private/no-store and errors omit stored evidence.
+- Dependencies/migrations: none added; package lock and SQL migrations unchanged. The Life repository gained a bounded owner-filtered `listUpcoming` read.
+- Baseline: the sequential 125-test suite, typecheck and build passed. An initial parallel baseline run caused the production smoke to race `next build` while `.next` was being replaced; rerunning sequentially passed 125/125. Baseline ESLint exposed a Stage 11A effect-pattern violation in Life manager, corrected in this milestone without changing behavior.
+- Final validation: focused Today/Life tests PASS (30/30); `npm run lint` PASS; `npm run typecheck` PASS; `npm run build` PASS with `/api/today` and `/today`; `npm test` PASS (139/139, the previous 125 plus 14 Today tests); `git diff --check` PASS. Tests use synthetic data and no hosted/provider calls.
+- Browser boundary: production smoke and fresh desktop Chrome verified unauthenticated `/api/today` denial and `/today` redirect to `/auth?next=%2Ftoday` with restored shell styling and no visible horizontal overflow. Authenticated and exact 390/430/1440 comparisons remain **UNVERIFIED**; pixel-perfect parity is not claimed.
+- Meta preservation: Stage 8 reasoning/citation validation and Stage 9 proposal/Action Card modules, routes, migrations and regression tests remain intact.
+- Commit message: `port(today): restore original contextual resurfacing`.
+- Push status: NOT PUSHED; no remote, Git LFS, hosted migration, model or external action operation authorized.

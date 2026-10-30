@@ -1,3 +1,5 @@
-import { DeferredRoute } from "@/components/parity/deferred-route";
+import { redirect } from "next/navigation";
+import { verifiedPageUser } from "@/lib/auth/server";
+import { TodayWorkspace } from "@/components/today/today-workspace";
 export const dynamic = "force-dynamic";
-export default function TodayPage() { return <DeferredRoute next="/today" eyebrow="Why now" title="Here’s what matters today" description="Resurfaced Memories and upcoming Life items belong here in the original REIBRY composition." dependency="Today ranking and the Life chronology API have not yet been migrated. No items are fabricated while those owner-scoped services are unavailable." links={[{ href: "/memories", label: "Browse Memories" }, { href: "/life", label: "Open Life" }]} />; }
+export default async function TodayPage() { let user = null; try { user = await verifiedPageUser(); } catch { redirect("/auth?next=%2Ftoday"); } if (!user) redirect("/auth?next=%2Ftoday"); return <TodayWorkspace />; }
