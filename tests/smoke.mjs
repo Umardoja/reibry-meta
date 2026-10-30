@@ -103,6 +103,14 @@ test("production app serves the restored REIBRY shell and its stylesheet", async
     const planCreate = await fetch(origin + "/api/plans", { method: "POST", headers: { Origin: origin, "Sec-Fetch-Site": "same-origin", "Content-Type": "application/json" },
       body: JSON.stringify({ title: "private", memoryIds: [], requestId: "40000000-0000-4000-8000-000000000001" }) });
     assert.equal(planCreate.status, 401);
+    const readyPacks = await fetch(origin + "/api/ready-packs?planId=30000000-0000-4000-8000-000000000001");
+    assert.equal(readyPacks.status, 401);
+    assert.equal((await readyPacks.json()).error.code, "AUTH_REQUIRED");
+    const candidates = await fetch(origin + "/api/ready-packs/candidates?planId=30000000-0000-4000-8000-000000000001");
+    assert.equal(candidates.status, 401);
+    const packCreate = await fetch(origin + "/api/ready-packs", { method: "POST", headers: { Origin: origin, "Sec-Fetch-Site": "same-origin", "Content-Type": "application/json" },
+      body: JSON.stringify({ planId: "30000000-0000-4000-8000-000000000001", selections: {}, requestId: "40000000-0000-4000-8000-000000000001" }) });
+    assert.equal(packCreate.status, 401);
     const lifeCreate = await fetch(origin + "/api/life/create", {
       method: "POST", headers: { Origin: origin, "Sec-Fetch-Site": "same-origin", "Content-Type": "application/json" },
       body: JSON.stringify({ text: "must not persist without a session", timezone: "UTC" }),
