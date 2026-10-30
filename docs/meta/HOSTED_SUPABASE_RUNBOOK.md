@@ -102,6 +102,96 @@ bundle. `AUTH_ENABLED=true`, a canonical `AUTH_SITE_URL`, and
 `META_RATE_LIMIT_MODE=in-memory` are already present and passed their local
 parsers; the in-memory limiter is not sufficient for multi-instance production.
 
+## Stage 12E-2 hosted migration result (2026-10-30)
+
+**Access recovery (12E-1 resumed).** After the owner reauthenticated, the CLI
+account's project list contained the exact reference derived from the
+configured URL. The CLI was linked to that project only. `db push --dry-run`
+listed exactly the seven migrations above, and the remote migration history was
+empty.
+
+**Read-only preflight (12E-2A).** Catalog inspection used
+`supabase db query --linked` with every statement inside
+`begin transaction read only`. The server confirmed `transaction_read_only=on`.
+
+- **Application objects:** `public` held no tables, views, functions, types,
+  policies, or triggers. There were no non-system schemas besides `public`.
+- **Auth:** `auth.users` had zero rows and no triggers.
+- **Dependencies:** `auth.uid()` and `gen_random_uuid()` exist; `pgcrypto` is
+  installed in `extensions`.
+- **Migration history:** `supabase_migrations.schema_migrations` did not exist.
+
+**Migration application (12E-2B).** One owner-approved
+`supabase db push --linked` applied all seven migrations in order without
+error. No seed or role options were used, and nothing was retried, repaired,
+or reset. `supabase migration list --linked` shows all seven versions recorded
+both locally and remotely.
+
+**Post-deployment catalog checks** (read-only transaction):
+
+- **Objects in `public`:**
+
+  | Object | Count |
+  | --- | --- |
+  | Tables | 11 |
+  | Views | 0 |
+  | Functions | 11 |
+  | Policies | 17 |
+  | Non-internal triggers | 4 |
+  | Indexes | 45 |
+  | Check constraints | 42 |
+  | Foreign keys | 21 |
+  | Primary keys | 11 |
+  | Unique constraints | 13 |
+
+  The function count is 13 `create` statements, minus the redefined
+  `confirm_action_proposal`, minus the dropped legacy `create_action_proposals`.
+- **Row-level security:** enabled and forced on all 11 product tables.
+- **Trusted proposal RPC:** `create_trusted_action_proposals` is executable
+  only by `service_role` (anon=false, authenticated=false). The legacy
+  `create_action_proposals` is absent.
+- **Table privileges:** `anon` has no table privileges. `authenticated` has
+  `SELECT` everywhere. It also has `DELETE` plus column-scoped `INSERT`/`UPDATE`
+  on `memories` and `life_contexts` only.
+- **Data:** zero rows in every product table and zero Auth users.
+
+**Privilege finding (not yet corrected).** Hosted Supabase default privileges
+grant `EXECUTE` on new `public` functions to `anon`, `authenticated`, and
+`service_role`. The Plans migration revokes only from `PUBLIC`, so `anon`
+retains `EXECUTE` on these `SECURITY DEFINER` functions:
+
+- `create_owned_plan`
+- `update_owned_plan`
+- `delete_owned_plan`
+
+`anon` also retains `EXECUTE` on the three `set_*_updated_at` trigger functions.
+
+Practical exposure is limited:
+
+- Each Plans RPC raises `42501` as its first statement when `auth.uid()` is
+  null.
+- Trigger functions cannot be invoked directly.
+- `service_role` likewise retains `EXECUTE` on most owner RPCs, but they depend
+  on `auth.uid()`.
+
+This is still a defense-in-depth gap compared with the Ready Pack migration,
+which revokes from `anon` explicitly. Closing it requires a new, separately
+approved forward migration that revokes these grants from `anon`. Do not edit
+already-applied migrations, and do not repair or reset.
+
+**Not yet verified.** Catalog checks do not prove real two-user isolation.
+Hosted RLS and persistence remain **NOT VERIFIED** until the approved two-user
+plan below succeeds.
+
+**Remaining prerequisites for the authenticated demo:**
+
+- Configure server-only `SUPABASE_SECRET_KEY` (`sb_secret_` form) in the
+  ignored `.env.local`. It is still absent and is needed only for trusted
+  proposal creation.
+- Confirm that Supabase Auth allows the configured `<AUTH_SITE_URL>/auth/callback`
+  redirect and the intended email sign-in method.
+- Separately approve creating two disposable users and synthetic records.
+
 ## Approved two-user test plan
 
 After migrations and account creation receive approval:
