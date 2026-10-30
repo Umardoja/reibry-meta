@@ -66,6 +66,42 @@ reviewed current Supabase CLI available, link only that confirmed project, and
 run `supabase db push --dry-run`. That approval must not include real `db push`,
 user creation, dashboard changes, migration repair, reset, or row writes.
 
+## Stage 12E-1 preflight result (2026-10-30)
+
+The owner subsequently confirmed that the project configured in the ignored
+`.env.local` is the disposable Meta development project. The project-scoped
+official Supabase CLI (`2.122.0`) was installed and its local state is ignored.
+The configured URL yielded a syntactically valid project reference, but that
+reference was not present in the authenticated CLI account's accessible project
+list. No reference, URL, token, or project name is recorded here.
+
+This is an identity/access mismatch, so the CLI was **not linked** and
+`supabase db push --dry-run` was **not run**. Treat the project identity as not
+yet independently verified despite the owner's confirmation. Before continuing,
+the owner must authenticate the CLI as an account with access to the confirmed
+development project, or grant that account the required project access; then
+repeat the private exact-reference comparison. Only after it matches may the
+authorized link and dry-run occur. No hosted schema, migration-history, user,
+or data operation was attempted in this stage.
+
+The seven local migrations remain, in order:
+
+1. `20261027000000_memory_foundation.sql`
+2. `20261027010000_capture_deduplication.sql`
+3. `20261029000000_confirmed_actions.sql`
+4. `20261030000000_life_contexts.sql`
+5. `20261030010000_plans.sql`
+6. `20261030020000_ready_packs.sql`
+7. `20261030030000_trusted_action_proposals.sql`
+
+Configuration presence was checked without reading values. All required local
+names are present except `SUPABASE_SECRET_KEY`; that server-only secret remains
+required only for trusted proposal persistence after the seventh migration is
+applied. It must retain the accepted `sb_secret_` form and never enter a client
+bundle. `AUTH_ENABLED=true`, a canonical `AUTH_SITE_URL`, and
+`META_RATE_LIMIT_MODE=in-memory` are already present and passed their local
+parsers; the in-memory limiter is not sufficient for multi-instance production.
+
 ## Approved two-user test plan
 
 After migrations and account creation receive approval:
