@@ -14,6 +14,7 @@ const origin = "http://localhost:3000";
 const userA = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const userB = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const publicDns = async () => [{ address: "8.8.8.8" }];
+const offline = async () => ({ status: "unavailable" as const, provider: null, reason: "provider-error", provenance: {} });
 function repository(owner = userA) { return createInMemoryMemoryRepository(owner, createMemoryTestState()); }
 function context(repo: MemoryRepository): CaptureContextFactory { return async () => ({ userId: repo.ownerId, repository: repo }); }
 function request(body: unknown, requestOrigin = origin) { return new Request(origin + "/api/capture", { method: "POST",
@@ -36,12 +37,13 @@ test("valid notes preserve original text, use deterministic titles and contain n
   assert.equal("summary" in result.memory.metadata, false); assert.equal("analysis" in result.memory.metadata, false);
 });
 
-test("public HTTPS link normalization keeps meaningful query values while removing fragments", () => {
-  const link = parsePublicLink("https://Example.com/path?b=two&a=one#private-fragment");
+test("public HTTPS link normalization keeps meaningful query values while removing fragments and tracking", () => {
+  const link = parsePublicLink("https://Example.com/path?b=two&a=one&utm_source=share&fbclid=x#private-fragment");
   assert.equal(link.normalized, "https://example.com/path?a=one&b=two");
-  assert.equal(link.submitted, "https://Example.com/path?b=two&a=one#private-fragment");
+  assert.equal(link.submitted, "https://Example.com/path?b=two&a=one&utm_source=share&fbclid=x#private-fragment");
+  // Stage 12I: a YouTube share collapses to its video identity (timestamps and share IDs do not create a separate Memory).
   const youtube = parsePublicLink("https://youtu.be/abc123?t=42");
-  assert.equal(youtube.normalized, "https://www.youtube.com/watch?t=42&v=abc123");
+  assert.equal(youtube.normalized, "https://www.youtube.com/watch?v=abc123"); assert.equal(youtube.identity, "youtube:abc123");
 });
 
 test("invalid, non-HTTPS, credentialed, localhost, private and reserved targets are rejected", () => {
@@ -52,16 +54,16 @@ test("invalid, non-HTTPS, credentialed, localhost, private and reserved targets 
   assert.equal(publicAddress("8.8.8.8"), true); assert.equal(publicAddress("2606:4700:4700::1111"), true);
 });
 
-test("generic links are saved without arbitrary server fetching", async () => {
+test("generic links are saved even when the vetted page-metadata fetch fails", async () => {
   let calls = 0; const result = await capture({ sourceType: "link", content: "https://example.com/article?q=meaningful" }, repository(),
-    async link => { calls++; return enrichLink(link, { fetcher: async () => { throw new Error("must not fetch"); } }); });
-  assert.equal(calls, 1); assert.equal(result.enrichment.status, "unsupported"); assert.equal(result.memory.sourceUrl, "https://example.com/article?q=meaningful");
-  assert.equal(result.memory.title, "example.com");
+    async link => { calls++; return enrichLink(link, { resolve: publicDns, fetcher: async () => { throw new Error("network down"); } }); });
+  assert.equal(calls, 1); assert.equal(result.enrichment.status, "unavailable"); assert.equal(result.memory.sourceUrl, "https://example.com/article?q=meaningful");
+  assert.equal(result.memory.title, "example.com"); assert.equal(result.memory.metadata.provenance && (result.memory.metadata.provenance as Record<string, string>).title, "reibry-placeholder");
 });
 
 test("YouTube and TikTok use only fixed oEmbed endpoints and preserve returned safe metadata", async () => {
   for (const [source, expectedHost, provider] of [["https://youtu.be/abc", "www.youtube.com", "youtube-oembed"],
-    ["https://www.tiktok.com/@creator/video/123", "www.tiktok.com", "tiktok-oembed"]] as const) {
+    ["https://www.tiktok.com/@creator/video/1234567890123", "www.tiktok.com", "tiktok-oembed"]] as const) {
     const seen: URL[] = [];
     const result = await capture({ sourceType: "link", content: source }, repository(), link => enrichLink(link, { resolve: publicDns,
       fetcher: async input => { const endpoint = new URL(input.toString()); seen.push(endpoint); return jsonResponse({ title: "Verified source title", author_name: "Creator", thumbnail_url: "https://cdn.example.com/thumb.jpg" }); } }));
@@ -98,7 +100,7 @@ test("metadata DNS and network work have a bounded total timeout", async () => {
 });
 
 test("YouTube/TikTok metadata failures preserve the original link with honest status", async () => {
-  for (const source of ["https://youtu.be/abc", "https://www.tiktok.com/@creator/video/123"]) {
+  for (const source of ["https://youtu.be/abc", "https://www.tiktok.com/@creator/video/1234567890123"]) {
     const result = await capture({ sourceType: "link", content: source }, repository(), link => enrichLink(link, { resolve: publicDns,
       fetcher: async () => new Response("down", { status: 503 }) }));
     assert.equal(result.memory.sourceUrl, source); assert.equal(result.memory.analysisStatus, "processing");
@@ -115,7 +117,7 @@ test("missing optional thumbnail does not downgrade otherwise valid metadata", a
 
 test("same-owner equivalent links deduplicate atomically, including concurrent requests", async () => {
   const repo = repository(); const source = "https://example.com/path?b=2&a=1";
-  const first = await capture({ sourceType: "link", content: source }, repo); const second = await capture({ sourceType: "link", content: "https://EXAMPLE.com/path?a=1&b=2#x" }, repo);
+  const first = await capture({ sourceType: "link", content: source }, repo, offline); const second = await capture({ sourceType: "link", content: "https://EXAMPLE.com/path?a=1&b=2&utm_campaign=x#x" }, repo, offline);
   assert.equal(first.duplicate, false); assert.equal(second.duplicate, true); assert.equal(second.memory.id, first.memory.id);
   const results = await Promise.all([capture({ sourceType: "text", content: "Concurrent note" }, repo), capture({ sourceType: "text", content: "Concurrent note" }, repo)]);
   assert.equal(results.filter(item => item.duplicate).length, 1); assert.equal(results[0].memory.id, results[1].memory.id);
@@ -123,8 +125,8 @@ test("same-owner equivalent links deduplicate atomically, including concurrent r
 
 test("deduplication is owner scoped and never returns another user's Memory", async () => {
   const state = createMemoryTestState(); const a = createInMemoryMemoryRepository(userA, state); const b = createInMemoryMemoryRepository(userB, state);
-  const first = await capture({ sourceType: "link", content: "https://example.com/private" }, a);
-  const second = await capture({ sourceType: "link", content: "https://example.com/private" }, b);
+  const first = await capture({ sourceType: "link", content: "https://example.com/private" }, a, offline);
+  const second = await capture({ sourceType: "link", content: "https://example.com/private" }, b, offline);
   assert.equal(second.duplicate, false); assert.notEqual(second.memory.id, first.memory.id); assert.equal(second.memory.userId, userB);
 });
 
@@ -148,13 +150,15 @@ test("storage failures have no mock fallback and private sources are not logged"
   } finally { console.error = originalError; repo.createUnique = original; }
 });
 
-test("capture production boundary has no mock store, arbitrary-page fetch or AI provider", async () => {
+test("capture production boundary has no mock store, unvetted fetch or AI provider", async () => {
   for (const file of ["src/lib/capture/service.ts", "src/lib/capture/server.ts", "src/app/api/capture/route.ts"]) {
     const source = await readFile(new URL("../" + file, import.meta.url), "utf8");
     assert.doesNotMatch(source, /tests\/support|in-memory|service.?role|gemini|nvidia|nebius|meta.?api/i);
   }
   const enrichment = await readFile(new URL("../src/lib/capture/enrichment.ts", import.meta.url), "utf8");
-  assert.doesNotMatch(enrichment, /fetch\(link\.|fetch\(input\.|response\.text\(\)/);
+  assert.doesNotMatch(enrichment, /fetch\(link\.|fetch\(input\.|response\.text\(\)|redirect: "follow"/);
+  // Generic pages are fetched only through the vetted helper: public DNS on every hop, manual redirects, size and type limits.
+  assert.match(enrichment, /assertPublicHost\(current/); assert.match(enrichment, /redirect: "manual"/);
 });
 
 test("local migration defines owner-scoped atomic deduplication without applying providers", async () => {

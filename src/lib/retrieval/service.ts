@@ -14,10 +14,22 @@ export function normalizeQuery(value: string) {
   return { phrase, terms };
 }
 function normalized(value: string) { return value.normalize("NFKC").toLocaleLowerCase("en").replace(/[^\p{L}\p{N}]+/gu, " ").replace(/\s+/g, " ").trim(); }
-function metadataValues(metadata: Record<string, JsonValue>) { return [metadata.author, metadata.platform, metadata.metadataProvider]
+// Captured provider/page metadata (creator, caption, hashtags, site) is searchable alongside the title and the user's own note.
+function metadataValues(metadata: Record<string, JsonValue>) { return [metadata.author, metadata.platform, metadata.metadataProvider, metadata.siteName,
+  metadata.caption, Array.isArray(metadata.hashtags) ? metadata.hashtags.filter(tag => typeof tag === "string").map(tag => `#${tag}`).join(" ") : null]
   .filter((value): value is string => typeof value === "string" && !!value.trim()); }
+function text(value: JsonValue | undefined, max: number) { return typeof value === "string" && value.trim() ? value.trim().slice(0, max) : null; }
+function sourceDetails(memory: Memory): RetrievalItem["sourceDetails"] {
+  if (memory.sourceType !== "link") return null;
+  return { platform: text(memory.metadata.platform, 40), creator: text(memory.metadata.author, 120), caption: text(memory.metadata.caption, 280), userNote: memory.rawText ? memory.rawText.trim().slice(0, 280) : null };
+}
 function metadataText(metadata: Record<string, JsonValue>) { return metadataValues(metadata).join(" "); }
-function hostname(sourceUrl: string | null) { try { return sourceUrl ? new URL(sourceUrl).hostname.replace(/^www\./, "") : ""; } catch { return ""; } }
+function hostOnly(sourceUrl: string | null) { try { return sourceUrl ? new URL(sourceUrl).hostname.replace(/^www\./, "") : ""; } catch { return ""; } }
+// Hostname plus readable URL path words ("/docs/Web/JavaScript", "/wiki/Birthday_cake") are a weak but real signal for saved links.
+// Long opaque tokens (IDs, hashes) are dropped so they never match conversational words.
+function hostname(sourceUrl: string | null) { try { if (!sourceUrl) return ""; const url = new URL(sourceUrl);
+  let path = url.pathname; try { path = decodeURIComponent(path); } catch { /* keep the raw path */ }
+  return `${url.hostname.replace(/^www\./, "")} ${path.replace(/[^\p{L}\p{N}]+/gu, " ").replace(/\b(?=[\p{L}\p{N}]*\d)[\p{L}\p{N}]{8,}\b/gu, " ")}`.replace(/\s+/g, " ").trim(); } catch { return ""; } }
 function matchedTerms(text: string, terms: string[]) { const source = new Set(normalized(text).split(" ")); return terms.filter(term => source.has(term)); }
 function excerpt(value: string | null, phrase: string, terms: string[]) {
   if (!value) return null;
@@ -40,6 +52,9 @@ export function rankMemories(memories: Memory[], query: string, limit: number): 
     const values: Record<EvidenceField, string> = { title: memory.title, note: memory.rawText || "",
       metadata: metadataText(memory.metadata), hostname: hostname(memory.sourceUrl) };
     const hits = Object.fromEntries((Object.keys(values) as EvidenceField[]).map(field => [field, matchedTerms(values[field], input.terms)])) as Record<EvidenceField, string[]>;
+    // URL path words are a fallback signal: they count only for terms the title, note and metadata did not already match.
+    const hostTerms = new Set(normalized(hostOnly(memory.sourceUrl)).split(" "));
+    hits.hostname = hits.hostname.filter(term => hostTerms.has(term) || (!hits.title.includes(term) && !hits.note.includes(term) && !hits.metadata.includes(term)));
     const fields = (Object.keys(hits) as EvidenceField[]).filter(field => hits[field].length > 0 || normalized(values[field]).includes(input.phrase));
     if (!fields.length) return null;
     const coverage = (field: EvidenceField) => hits[field].length / input.terms.length;
@@ -51,7 +66,7 @@ export function rankMemories(memories: Memory[], query: string, limit: number): 
     const matchedSourceMetadata = metadataValues(memory.metadata).filter(value => matchedTerms(value, input.terms).length || normalized(value).includes(input.phrase)).slice(0, 3).map(value => value.slice(0, 200));
     const item: RetrievalItem = { memoryId: memory.id, memoryHref: `/memories#memory-${memory.id}`, displayTitle: memory.title,
       sourceType: memory.sourceType, storedExcerpt: memory.sourceType === "text" ? excerpt(memory.rawText, input.phrase, input.terms) : null,
-      matchedSourceMetadata, sourceUrl: memory.sourceUrl, processingStatus: memory.analysisStatus, match: { reason: reason(fields), score: Math.max(1, score), fields } };
+      matchedSourceMetadata, sourceUrl: memory.sourceUrl, processingStatus: memory.analysisStatus, match: { reason: reason(fields), score: Math.max(1, score), fields }, sourceDetails: sourceDetails(memory) };
     return { item: validateRetrievalItem(item), createdAt: memory.createdAt };
   }).filter((value): value is { item: RetrievalItem; createdAt: string } => value !== null)
     .sort((a, b) => b.item.match.score - a.item.match.score || Date.parse(b.createdAt) - Date.parse(a.createdAt) || a.item.memoryId.localeCompare(b.item.memoryId))
@@ -68,5 +83,5 @@ export function memoryEvidenceItem(memory: Memory): RetrievalItem {
   return validateRetrievalItem({ memoryId: memory.id, memoryHref: `/memories#memory-${memory.id}`, displayTitle: memory.title,
     sourceType: memory.sourceType, storedExcerpt: memory.sourceType === "text" ? excerpt(memory.rawText, "", []) : null,
     matchedSourceMetadata: metadataValues(memory.metadata).slice(0, 3).map(value => value.slice(0, 200)), sourceUrl: memory.sourceUrl,
-    processingStatus: memory.analysisStatus, match: { reason: "Shown earlier in this conversation.", score: 1, fields: ["title"] } });
+    processingStatus: memory.analysisStatus, match: { reason: "Shown earlier in this conversation.", score: 1, fields: ["title"] }, sourceDetails: sourceDetails(memory) });
 }

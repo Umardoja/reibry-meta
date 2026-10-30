@@ -16,6 +16,8 @@ export type RetrievalItem = {
   sourceUrl: string | null;
   processingStatus: MemoryStatus;
   match: { reason: string; score: number; fields: EvidenceField[] };
+  /** Captured-link details with their origin: provider/page metadata vs the user's own note. Never a transcript or visual analysis. */
+  sourceDetails?: { platform: string | null; creator: string | null; caption: string | null; userNote: string | null } | null;
 };
 export type RetrievalResponse = { query: string; state: "matches" | "no-match"; items: RetrievalItem[] };
 export type SearchRequest = { query: string; limit: number };

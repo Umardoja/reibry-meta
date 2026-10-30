@@ -28,6 +28,8 @@ export type ModelEvidence = {
   match_reason: string;
   /** 1-based position in the previous assistant turn when the user is referring back to it ("the second one"). */
   shown_earlier_position: number | null;
+  /** Link Memories only: creator and caption as supplied by the platform/page (not watched or transcribed), and the user's own note. */
+  link_details: { platform: string | null; creator_from_provider: string | null; provider_caption: string | null; user_note: string | null } | null;
 };
 export type GroundedModelAnswer = {
   answer: string;
@@ -116,6 +118,8 @@ export function toModelEvidence(items: RetrievalItem[], shownEarlier: ReadonlyMa
       processing_status: item.processingStatus,
       match_reason: item.match.reason.slice(0, 180),
       shown_earlier_position: shownEarlier.get(item.memoryId) ?? null,
+      link_details: item.sourceType === "link" && item.sourceDetails ? { platform: item.sourceDetails.platform, creator_from_provider: item.sourceDetails.creator,
+        provider_caption: item.sourceDetails.caption, user_note: item.sourceDetails.userNote } : null,
     };
   });
   if (new TextEncoder().encode(JSON.stringify(result)).length > META_EVIDENCE_BYTES_MAX) throw new MetaContractError("Evidence payload is too large.");
@@ -123,7 +127,7 @@ export function toModelEvidence(items: RetrievalItem[], shownEarlier: ReadonlyMa
 }
 
 // Any natural acknowledgement that only the saved link details (not the video/page itself) are available.
-const metadataLimitAcknowledged = /metadata|saved (?:title|link|details)|limited evidence|only (?:have|saved|see|know) (?:the |its |a )?(?:link|title|url|address)|(?:haven't|have not|can't|cannot|couldn't|didn't|don't) (?:watch|see|open|read|access|view)/i;
+const metadataLimitAcknowledged = /metadata|caption|description|your note|you noted|saved (?:title|link|details)|limited evidence|only (?:have|saved|see|know) (?:the |its |a )?(?:link|title|url|address)|(?:haven't|have not|can't|cannot|couldn't|didn't|don't) (?:watch|see|open|read|access|view)/i;
 const unsupportedMetadataClaim = /\b(transcript says|video says|article says|webpage says|page says|i watched|i read the (?:article|page)|full (?:video|webpage|article))\b/i;
 export function validateGroundedAnswer(value: unknown, evidence: ModelEvidence[]): GroundedModelAnswer {
   if (!value || typeof value !== "object") throw new MetaContractError("Model output is not an object.");
@@ -149,6 +153,9 @@ export function validateGroundedAnswer(value: unknown, evidence: ModelEvidence[]
   const citedMetadataOnly = referenced.some(id => available.get(id)?.source_provenance.kind === "metadata-only-link");
   const combined = [object.answer as string, ...steps.map(step => step.description)].join(" ");
   if (citedMetadataOnly && unsupportedMetadataClaim.test(combined)) throw new MetaContractError("Model claimed unavailable source content.", "grounding_violation");
-  if (citedMetadataOnly && !metadataLimitAcknowledged.test(object.answer as string)) throw new MetaContractError("Metadata-only evidence limitation was omitted.", "grounding_violation");
-  return { answer: object.answer as string, evidence_status: object.evidence_status as EvidenceStatus, cited_memory_ids: cited, proposed_next_steps: steps };
+  // Claims about unseen video/page content are rejected above. A merely missing disclosure is repaired with a fixed sentence instead of
+  // discarding an otherwise grounded answer (live Stage 12I: a correct title-and-creator reply was rejected for not saying "saved link").
+  const disclosed = citedMetadataOnly && !metadataLimitAcknowledged.test(object.answer as string)
+    ? `${(object.answer as string).trimEnd()} (I'm going by what was saved with the link, not the video or page itself.)` : object.answer as string;
+  return { answer: disclosed, evidence_status: object.evidence_status as EvidenceStatus, cited_memory_ids: cited, proposed_next_steps: steps };
 }

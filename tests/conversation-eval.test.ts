@@ -156,3 +156,9 @@ test("live 12H defect: a statement like 'I want to learn Python' never persists 
   const casual = await ask("I want to learn Python"); assert.equal(casual.data?.actionProposals.length, 0); assert.equal(actionState.proposals.size, 0); assert.deepEqual(casual.data?.groundedAnswer?.proposed_next_steps, []);
   const asked = await ask("Can we turn that into a plan?", { references: [id(4)] }); assert.equal(asked.data?.actionProposals.length, 1); assert.equal(actionState.proposals.size, 1);
 });
+test("live 12I defect: a correct title-and-creator reply about a saved link gets a disclosure instead of being discarded", async () => {
+  const { ask } = harness(() => reply("You saved the lemon cake decorating video.", [id(6)]));
+  const result = await ask("Which cake video did I save?");
+  assert.equal(result.data?.intent, "CONVERSATION"); assert.equal(result.data?.fallbackReason, null);
+  assert.match(result.data?.message || "", /not the video or page itself/);
+});

@@ -478,3 +478,39 @@
 - Validation: lint PASS; typecheck PASS; 221/221 tests PASS (including the 18-category mock-transport evaluation suite); build PASS; `git diff --check` PASS. Keys appear only in ignored compiler caches.
 - External safety: no hosted schema change, no new users, no push, no deployment, and no original REIBRY access. Only synthetic test data was used, under the existing disposable user A (plus one User B note).
 - Push status: NOT PUSHED.
+
+## Stage 12I - Fast share-to-Memory capture
+
+- Date: 2026-10-30 (Africa/Lagos).
+- Parent: `f159957c7660c2d3624744e7fc4dfbb28e1b369d`. The pre-existing `.env.example` edit, ignored `.env.local`/`.auth/`/screenshots, the untracked recovery report, and the untracked `AGENTS.md`/`CLAUDE.md` were preserved and not staged. Original REIBRY was inspected read-only.
+- Reproduced (live, before):
+  - enrichment was awaited before the insert;
+  - TikTok's oEmbed now returns only an iframe, yet the code reported "complete" with no data;
+  - tracking parameters (`si`, `is_from_webapp`) created duplicate Memories;
+  - Instagram and generic pages got no metadata.
+
+  The owner's "too long" was not reproduced on a warm server (maximum 1.1 s); dev cold compiles and the provider-awaited save are the likely contributors.
+- Changes:
+  - save-first capture with a 1.8 s enrichment race (per-host limits) and an insert that always runs;
+  - canonical identities and dedupe for YouTube, TikTok and Instagram, including vetted TikTok share-link resolution and tracking stripping;
+  - SSRF-safe Open Graph / JSON-LD for generic pages;
+  - honest TikTok and Instagram limits;
+  - field-level provenance;
+  - user note stored as `raw_text`;
+  - repeated shares fill a missing note or placeholder title;
+  - owner-only bounded details retry (title persistence only);
+  - captured fields, notes and URL path words in lexical search;
+  - provenance-labelled link details for Muse, with a disclosure appended when missing;
+  - `/capture?url=|text=` prefill and a signed-out handoff (never auto-saved), with a proxy exception only for that case;
+  - source details on the capture result and Memory detail.
+- Live: captures saved in 0.49–2.29 s. YouTube was complete; TikTok partial; Instagram honestly unavailable; a slow page was saved first and its retry persisted the real title. Duplicates, search, Plan → Ready Pack (explicit selection) and User B isolation were verified: 21/22 live checks, with the slow-page retry failure fixed and re-verified live. Browser 16/16.
+- Live Muse: 3 calls, $0.04425 conservative, all failed. One was a grounding rejection, fixed and mock-verified only. Two were unexplained transient 503s that could not be reproduced with a zero-cost replay.
+- Validation: lint PASS; typecheck PASS; 238/238 tests PASS; build PASS; `git diff --check` PASS.
+- Remaining:
+  - a migration to persist enrichment after insert;
+  - a durable enrichment queue;
+  - a Meta app token for Instagram;
+  - the TikTok Display API for captions and covers;
+  - Stage 12I-2 for user-uploaded media understanding.
+- External safety: no schema change, new users, push, deployment, media downloads or scraping of TikTok or Instagram pages.
+- Push status: NOT PUSHED.

@@ -13,6 +13,9 @@ export async function proxy(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
   const protectedDestination = pathname.startsWith("/memories") ? pathname : pathname.startsWith("/capture") ? "/capture" : pathname.startsWith("/ask") ? "/ask" : pathname.startsWith("/actions") ? "/actions" : pathname.startsWith("/today") ? "/today" : pathname.startsWith("/life") ? pathname : pathname.startsWith("/plans") ? pathname : pathname.startsWith("/settings") ? "/settings" : pathname.startsWith("/onboarding") ? "/onboarding" : "/account";
   const destination = new URL("/auth?next=" + encodeURIComponent(protectedDestination), origin);
+  // A signed-out share to /capture reaches the page, which verifies auth itself and only hands the link to sign-in (no data is exposed).
+  if (!incoming.some(c => isAuthCookie(c.name)) && pathname === "/capture" && (request.nextUrl.searchParams.has("url") || request.nextUrl.searchParams.has("text")))
+    return applyAuthCookies(NextResponse.next(), [], origin.startsWith("https:"));
   if (!incoming.some(c => isAuthCookie(c.name))) return applyAuthCookies(NextResponse.redirect(destination), [], origin.startsWith("https:"));
   try {
     const user = await bounded(signal => createAuthAdapter(jar, signal, origin).verify());

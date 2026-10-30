@@ -84,7 +84,8 @@ test("runtime output validation rejects invalid schema and unknown Memory IDs", 
 test("metadata-only answers must disclose limits and cannot claim transcripts or page contents", () => {
   const evidence = toModelEvidence([retrieval({ sourceType: "link", storedExcerpt: null, sourceUrl: "https://youtube.com/watch?v=x" })]);
   assert.throws(() => validateGroundedAnswer(answer({ answer: "The video says ship Tuesday." }), evidence));
-  assert.throws(() => validateGroundedAnswer(answer({ answer: "Ship Tuesday." }), evidence));
+  // A missing disclosure is repaired with a fixed sentence; claims about unseen content still throw (above).
+  assert.equal(validateGroundedAnswer(answer({ answer: "Ship Tuesday." }), evidence).answer, "Ship Tuesday. (I'm going by what was saved with the link, not the video or page itself.)");
   assert.equal(validateGroundedAnswer(answer({ answer: "The saved title is relevant, but evidence is limited to metadata." }), evidence).evidence_status, "supported");
 });
 
