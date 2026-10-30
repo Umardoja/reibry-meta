@@ -56,6 +56,21 @@ function mapped(error: unknown): FailureCode {
   return "AI_UNAVAILABLE";
 }
 
+/** Shared Stage 8 execution boundary used by Ask REIBRY and the restored Home. */
+export async function executeGroundedAsk(question: string, context: AskContext, reasoner: MetaReasoner, limiter: AskRateLimiter,
+  signal: AbortSignal): Promise<AskResponse> {
+  if (context.repository.ownerId !== context.userId || context.actionRepository.ownerId !== context.userId) throw new AuthFailure("AUTH_REQUIRED");
+  const retrieval = await searchOwnedMemories(context.repository, question, 6);
+  if (retrieval.state === "no-match") return noEvidenceAnswer();
+  if (!limiter.consume(context.userId)) throw new MetaClientError("META_RATE_LIMIT");
+  const answer = await reasoner(question, retrieval.items, signal);
+  const inputs = proposalInputs(answer.proposed_next_steps, new Set(retrieval.items.map(item => item.memoryId)));
+  if (inputs.length && !answer.model) throw new ActionRepositoryFailure("INVALID_STATE");
+  const persisted = inputs.length ? await context.actionRepository.createProposals(inputs, `meta:${answer.model}`) : [];
+  if (persisted.length !== inputs.length) throw new ActionRepositoryFailure("STORAGE_UNAVAILABLE");
+  return { ...answer, action_proposals: persisted.map(proposalView) };
+}
+
 export async function handleAskRequest(request: Request, factory: AskContextFactory, reasoner: MetaReasoner, limiter: AskRateLimiter,
   expectedOrigin = new URL(request.url).origin, timeout = 25_000): Promise<AskResult> {
   if (request.method !== "POST") return { ...failure("VALIDATION_ERROR"), status: 405 };
@@ -63,16 +78,7 @@ export async function handleAskRequest(request: Request, factory: AskContextFact
   try {
     return await bounded(async signal => {
       const { question } = parseAskBody(await readJson(request, signal));
-      const context = await factory(signal); if (context.repository.ownerId !== context.userId || context.actionRepository.ownerId !== context.userId) throw new AuthFailure("AUTH_REQUIRED");
-      const retrieval = await searchOwnedMemories(context.repository, question, 6);
-      if (retrieval.state === "no-match") return { status: 200, data: noEvidenceAnswer(), error: null };
-      if (!limiter.consume(context.userId)) return failure("AI_RATE_LIMITED");
-      const answer = await reasoner(question, retrieval.items, signal);
-      const inputs = proposalInputs(answer.proposed_next_steps, new Set(retrieval.items.map(item => item.memoryId)));
-      if (inputs.length && !answer.model) throw new ActionRepositoryFailure("INVALID_STATE");
-      const persisted = inputs.length ? await context.actionRepository.createProposals(inputs, `meta:${answer.model}`) : [];
-      if (persisted.length !== inputs.length) throw new ActionRepositoryFailure("STORAGE_UNAVAILABLE");
-      return { status: 200, data: { ...answer, action_proposals: persisted.map(proposalView) }, error: null };
+      return { status: 200, data: await executeGroundedAsk(question, await factory(signal), reasoner, limiter, signal), error: null };
     }, timeout);
   } catch (error) { return failure(mapped(error)); }
 }

@@ -101,10 +101,11 @@ test("SQL migration denies direct writes and defines owner checks, atomic lockin
 });
 
 test("Action UI labels confirmed records as saved planning artifacts, never executed work", async () => {
-  const [ask, library] = await Promise.all([
+  const [ask, review, library] = await Promise.all([
     readFile(new URL("../src/components/ai/ask-reibry.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../src/components/actions/action-proposal-review.tsx", import.meta.url), "utf8"),
     readFile(new URL("../src/components/actions/action-library.tsx", import.meta.url), "utf8"),
   ]);
-  assert.match(ask, /Review action/); assert.match(ask, /Save action/); assert.match(ask, /planning artifact/i);
-  assert.match(library, /Not executed/); assert.doesNotMatch(`${ask}\n${library}`, />Completed</);
+  assert.match(ask, /ActionProposalReview/); assert.match(review, /Review action/); assert.match(review, /Save action/); assert.match(review, /planning artifact/i);
+  assert.match(library, /Not executed/); assert.doesNotMatch(`${ask}\n${review}\n${library}`, />Completed</);
 });

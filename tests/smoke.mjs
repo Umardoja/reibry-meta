@@ -42,9 +42,8 @@ test("production app serves the restored REIBRY shell and its stylesheet", async
     assert.match(html, /<html[^>]*lang="en"/);
     assert.match(html, /<title>REIBRY/);
     assert.match(html, /<main[^>]*id="main"/);
-    assert.match(html, /<h1[^>]*>What are you trying to do\?/);
-    assert.match(html, /From saved to done/);
     assert.match(html, /Checking your session/);
+    assert.match(html, /HomeConversation/);
     assert.match(html, /aria-label="Main navigation"/);
     assert.match(html, /href="\/plans"/);
     assert.match(html, /href="\/settings"/);
@@ -94,6 +93,10 @@ test("production app serves the restored REIBRY shell and its stylesheet", async
     const today = await fetch(origin + "/api/today");
     assert.equal(today.status, 401);
     assert.equal((await today.json()).error.code, "AUTH_REQUIRED");
+    const home = await fetch(origin + "/api/home", { method: "POST", headers: { Origin: origin, "Sec-Fetch-Site": "same-origin", "Content-Type": "application/json" },
+      body: JSON.stringify({ message: "Find my saved notes", timezone: "UTC" }) });
+    assert.equal(home.status, 401);
+    assert.equal((await home.json()).error.code, "AUTH_REQUIRED");
     const lifeCreate = await fetch(origin + "/api/life/create", {
       method: "POST", headers: { Origin: origin, "Sec-Fetch-Site": "same-origin", "Content-Type": "application/json" },
       body: JSON.stringify({ text: "must not persist without a session", timezone: "UTC" }),

@@ -217,3 +217,20 @@
 - Meta preservation: Stage 8 reasoning/citation validation and Stage 9 proposal/Action Card modules, routes, migrations and regression tests remain intact.
 - Commit message: `port(today): restore original contextual resurfacing`.
 - Push status: NOT PUSHED; no remote, Git LFS, hosted migration, model or external action operation authorized.
+
+## Stage 11C - Original conversational Home orchestration
+
+- Date: 2026-10-30 (Africa/Lagos).
+- Parent: `471c76fff0419135e69e7b62bbf8a6ee2c2b611b` on `feat/original-product-parity`; all prior commits and the untracked Stage 1 recovery report were preserved.
+- Inherited UI: ported the root thread, welcome, prompt suggestions, message/card hierarchy, new-chat control, responsive sticky composer and loading/error conventions from original `src/app/page.tsx` and `src/components/home/home-conversation-provider.tsx` at source `76d3494465bab43a5051498e90b9a486a65312b9`.
+- Orchestration: adapted deterministic concepts from original `src/lib/agent/home-agent.ts` and `/api/home`, but replaced the legacy broad provider/tool orchestrator with one fixed allowlist: Memory search, grounded Memory answer, upcoming Life, undated Life, Life draft/confirmation, Action review, clarification and unsupported request.
+- Reuse: Stage 7 performs lexical retrieval; a shared Stage 8 `executeGroundedAsk` retains the six-evidence/citation/structured-output/rate-limit boundary for `/ask` and Home; Stage 11A supplies owner Life reads/creation; Stage 9 supplies proposal storage and shared confirmation/rejection UI.
+- Confirmation: Life input becomes an inert server-derived draft. Missing date/time asks a follow-up. Only an explicit `confirm-life` request recomputes and saves it through the idempotent repository. No reminder, external action or inferred Memory/Life relation is created.
+- Security: one verified session and non-elevated Supabase client create all owner repositories; owner IDs are rechecked. The request is 8 KiB/500 characters, exact same-origin and 25-second bounded. Responses are private/no-store. Clients cannot supply users, evidence, Memory IDs, proposal content, provider/model, endpoint or tool names.
+- Scope: no dependency, lockfile or migration change. Original Plans and Ready Packs remain deferred and are not represented by Action Cards. Conversation turns remain ephemeral.
+- Baseline validation: lint PASS; typecheck PASS; build PASS; existing tests PASS 139/139 before implementation.
+- Stage 11C focused validation: Home/Muse/Action/Life tests PASS 61/61 after correcting three stale/overbroad test assertions exposed by the shared Action review extraction.
+- Final validation: lint PASS; typecheck PASS; production build PASS with `/api/home`; 153/153 deterministic tests PASS after the final auth-return-path correction; git diff check PASS. Desktop Chrome verified the isolated signed-out root shell/navigation and `/` auth return target. Authenticated 390/430/1440 comparison remains unverified. Hosted Supabase/RLS and live Muse remain **NOT VERIFIED**.
+- Meta preservation: Stage 8 provider adapter, evidence/citation validation, retry/budget controls and Stage 9 transactional Action confirmation remain authoritative and regression-covered.
+- Commit message: `port(home): restore original conversational orchestration`.
+- Push status: NOT PUSHED; no remote, Git LFS, hosted migration, provider or external action operation authorized.
