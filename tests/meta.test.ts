@@ -171,6 +171,14 @@ test("429, 500 and 503 receive at most one bounded Retry-After-aware retry", asy
   assert.equal(longDelayCalls, 1);
 });
 
+test("an explicit one-attempt dependency disables all transient retries", async () => {
+  let calls = 0; let sleeps = 0;
+  await assert.rejects(callMetaResponses(buildMetaRequest("x", toModelEvidence([retrieval()])), new AbortController().signal,
+    dependencies(async () => { calls++; return response({ error: {} }, 503); }, { maxAttempts: 1, sleep: async () => { sleeps++; } })),
+    (error: unknown) => error instanceof MetaClientError && error.code === "META_UNAVAILABLE");
+  assert.equal(calls, 1); assert.equal(sleeps, 0);
+});
+
 test("provider timeout is bounded and does not fall back to a mock answer", async () => {
   await assert.rejects(callMetaResponses(buildMetaRequest("x", toModelEvidence([retrieval()])), new AbortController().signal,
     dependencies((_input, init) => new Promise((_resolve, reject) => init?.signal?.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError"))))), 5),
@@ -232,8 +240,9 @@ test("production Meta boundary has no console logging, mock fallback, database m
   assert.doesNotMatch(client, /MODEL_API_KEY|process\.env|provider response/i); assert.match(client, /temporarily unavailable|took too long|Ask REIBRY is unavailable/i);
 });
 
-test("opt-in live verifier is synthetic, gated, bounded to two requests and has no Supabase import", async () => {
+test("opt-in live verifier is synthetic, gated, exactly one request with no retry and has no Supabase import", async () => {
   const source = await readFile(new URL("../scripts/verify-meta.ts", import.meta.url), "utf8");
-  assert.match(source, /META_LIVE_VERIFY/); assert.match(source, /synthetic/i); assert.match(source, /at most 2/i);
+  assert.match(source, /META_LIVE_VERIFY/); assert.match(source, /synthetic/i); assert.match(source, /exactly 1 request/i);
+  assert.match(source, /maxAttempts: 1/); assert.match(source, /800, "minimal"/);
   assert.doesNotMatch(source, /supabase|rawText|console\.log\([^)]*answer/i);
 });

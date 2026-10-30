@@ -8,7 +8,7 @@ export class MetaClientError extends Error {
   diagnostic: MetaResponseDiagnostic | null;
   constructor(code: MetaFailureCode, diagnostic: MetaResponseDiagnostic | null = null) { super(code); this.code = code; this.diagnostic = diagnostic; }
 }
-export type MetaClientDependencies = { env: Record<string, string | undefined>; fetch: typeof fetch; sleep: (milliseconds: number, signal: AbortSignal) => Promise<void>; random: () => number };
+export type MetaClientDependencies = { env: Record<string, string | undefined>; fetch: typeof fetch; sleep: (milliseconds: number, signal: AbortSignal) => Promise<void>; random: () => number; maxAttempts?: 1 | 2 };
 export type MetaRawResult = { body: unknown; usage: MetaUsage; latencyMs: number };
 
 export function metaConfig(env: Record<string, string | undefined>) {
@@ -65,14 +65,15 @@ export async function callMetaResponses(payload: Record<string, unknown>, signal
   if (new TextEncoder().encode(serialized).length > META_REQUEST_BYTES_MAX) throw new MetaClientError("META_INVALID_RESPONSE");
   if (signal.aborted) throw new MetaClientError("META_TIMEOUT");
   const started = Date.now();
-  for (let attempt = 0; attempt < 2; attempt++) {
+  const maxAttempts = dependencies.maxAttempts ?? 2;
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
     const controller = new AbortController(); const abort = () => controller.abort(); signal.addEventListener("abort", abort, { once: true });
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
       const response = await dependencies.fetch(config.endpoint, { method: "POST", cache: "no-store", signal: controller.signal,
         headers: { Authorization: `Bearer ${config.key}`, "Content-Type": "application/json", Accept: "application/json" }, body: serialized });
       if (!response.ok) {
-        if ([429, 500, 503].includes(response.status) && attempt === 0) { const delay = retryDelay(response, attempt, dependencies.random);
+        if ([429, 500, 503].includes(response.status) && attempt + 1 < maxAttempts) { const delay = retryDelay(response, attempt, dependencies.random);
           try { await response.body?.cancel(); } catch { /* Ignore an error-body disposal failure. */ }
           if (delay !== null) { await dependencies.sleep(delay, signal); continue; } }
         try { await response.body?.cancel(); } catch { /* Never surface or log upstream error bodies. */ }

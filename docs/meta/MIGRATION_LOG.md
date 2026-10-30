@@ -313,3 +313,16 @@
 - Validation: lint PASS; typecheck PASS; deterministic suite PASS 190/190 (187 prior plus three focused response tests); production build PASS; `git diff --check` PASS.
 - Cache audit: after the build, one of 652 ignored `.next` artifacts contained the exact Meta key, under `.next/cache/turbopack`; client-static and deployable output had zero exact matches. This is local compiler-cache retention, not demonstrated client/deployment exposure. Rotation is recommended if the cache left the controlled machine.
 - External operations: no Meta request, hosted write, migration, user creation, project link, Git remote operation, or Git LFS command occurred.
+
+## Stage 12D - Controlled Muse retest and Supabase staging preflight
+
+- Date: 2026-10-30 (Africa/Lagos).
+- Parent: `298bc342fa7de6dde7795fa2ca3ed1058ff1dd44` on `feat/original-product-parity`; prior commits, ignored `.env.local`, the pre-existing `.env.example` edit, and the untracked Stage 1 recovery report were preserved.
+- Verifier hardening: added an injectable one/two-attempt ceiling to the existing adapter. Production retains its bounded two-attempt default; the synthetic verifier now fixes `maxAttempts=1`, guards the fetch count at one, and uses documented `reasoning.effort=minimal` with an 800-token output ceiling.
+- Meta live: the single separately authorized request returned HTTP 200 from Standard `muse-spark-1.3`. Structured output, runtime grounding, and exact synthetic citation validation passed. Usage was 397 input, 247 output, 644 total tokens; latency was 2,870 ms; estimated cost was $0.001546. No retry or second request occurred.
+- Supabase configuration: `AUTH_ENABLED=true`, canonical Auth origin/callback shape, `META_RATE_LIMIT_MODE=in-memory`, publishable configuration, and Meta configuration passed exact local parsers. `SUPABASE_SECRET_KEY` remains absent; `.env.local` was not changed.
+- Supabase preflight: Auth settings returned 200, Data OpenAPI 401, and all six application-table probes 404. Project identity/disposability was not affirmatively confirmed, no link marker exists, and the Supabase CLI is unavailable. No link, remote migration history, or dry-run occurred.
+- Migration inventory: seven local migrations remain ordered from Memory foundation through trusted Action proposals. None was applied, repaired, reset, or executed against the hosted project.
+- External safety: no hosted user/row/schema/settings write, no Git remote operation, no Git LFS command, and no original REIBRY modification occurred.
+- Validation: lint PASS; typecheck PASS; production build PASS; 191/191 deterministic tests PASS; `git diff --check` PASS. An initial full run had 190 passes and one smoke failure because the isolated server inherited the owner's configured Auth origin; the test harness now supplies its own reserved loopback origin and the unchanged security check correctly passes.
+- Secret artifacts: exact-value scanning covered 658 `.next` files. Two ignored Turbopack cache files retained the Meta key; client-static and deployable output had zero matches. No secret was printed, staged, or committed.

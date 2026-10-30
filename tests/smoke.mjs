@@ -11,20 +11,20 @@ test("production app serves the restored REIBRY shell and its stylesheet", async
   await once(portReservation, "listening");
   const { port } = portReservation.address();
   await new Promise((resolve) => portReservation.close(resolve));
+  const origin = "http://127.0.0.1:" + port;
 
   const server = spawn(process.execPath, [
     "node_modules/next/dist/bin/next", "start",
     "--hostname", "127.0.0.1", "--port", String(port),
   ], {
     windowsHide: true,
-    env: { ...process.env, NEXT_TELEMETRY_DISABLED: "1", AUTH_ENABLED: "false" },
+    env: { ...process.env, NEXT_TELEMETRY_DISABLED: "1", AUTH_ENABLED: "false", AUTH_SITE_URL: origin },
     stdio: ["ignore", "pipe", "pipe"],
   });
   let output = "";
   server.stdout.on("data", (data) => { output += data; });
   server.stderr.on("data", (data) => { output += data; });
   const exited = once(server, "exit");
-  const origin = "http://127.0.0.1:" + port;
 
   try {
     let response;

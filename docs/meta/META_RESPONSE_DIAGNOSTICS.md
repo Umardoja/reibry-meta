@@ -81,7 +81,10 @@ The synthetic verifier should then prove, without printing raw content:
 5. input/output/reasoning token usage when supplied; and
 6. bounded latency and estimated cost.
 
-Until that succeeds, real grounded Muse inference remains **NOT VERIFIED**.
+Stage 12D subsequently performed one separately authorized synthetic request.
+It returned HTTP 200 and passed structured-output, grounding, and exact citation
+validation with no retry. This verifies the corrected synthetic adapter path;
+it does not verify inference over personal data or authenticated persistence.
 
 ## Local secret-artifact note
 

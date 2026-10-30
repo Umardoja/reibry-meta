@@ -67,6 +67,57 @@ changes are fixture-verified only; **no Stage 12C Meta request was made**.
 A future live retest needs separate authorization. It must retain synthetic
 evidence and a new explicit total request/cost ceiling.
 
+### Stage 12D controlled retest
+
+The owner separately authorized one synthetic request with no retry and a
+$0.01 maximum estimate. Before execution, the verifier was changed to enforce
+`maxAttempts=1`, a one-call fetch guard, Standard `muse-spark-1.3`,
+`store=false`, no tools, strict Responses `text.format`, minimal reasoning, and
+an 800-token ceiling. The serialized request was 2,062 bytes and the worst-case
+estimate was approximately $0.0041.
+
+- Attempted: YES, exactly one request.
+- HTTP status: 200.
+- Structured output: PASS.
+- Exact synthetic citation and grounding validation: PASS.
+- Usage: 397 input, 247 output, 644 total tokens.
+- Estimated cost: $0.001546.
+- Latency: 2,870 ms.
+- Retry: none.
+
+Real synthetic grounded Muse inference is now **VERIFIED**. No real Memory,
+Supabase record, private prompt, raw response, or secret was transmitted or
+logged. Personal-data quality remains outside this verification.
+
+## Stage 12D Supabase staging preflight
+
+The configured endpoint remains reachable and Auth settings returned HTTP 200.
+Data OpenAPI returned 401, while read-only HEAD probes for Memories, Life,
+Plans, Ready Packs, proposals, and Action Cards returned 404. Application schema
+readiness is therefore NO; hosted RLS and persistence remain NOT VERIFIED.
+
+`AUTH_ENABLED=true`, the canonical Auth site configuration, and
+`META_RATE_LIMIT_MODE=in-memory` passed the application's exact parsers.
+`SUPABASE_SECRET_KEY` remains absent, so trusted proposal persistence is not
+configured. No live app journey ran because the schema is absent.
+
+Project identity/disposability was not affirmatively confirmed by the owner.
+No local project-link marker exists and the Supabase CLI is not installed.
+Accordingly, no link, remote migration-history read, or `db push --dry-run` was
+attempted. All seven local migrations were inventoried in order, with no hosted
+write.
+
+Stage 12D final validation: lint PASS; typecheck PASS; production build PASS;
+191/191 deterministic tests PASS; `git diff --check` PASS. The first full test
+run exposed that the smoke server inherited the owner's configured
+`AUTH_SITE_URL`, producing an expected origin denial. The harness now binds its
+explicit test origin to its reserved loopback port; application origin checks
+were not weakened.
+
+The post-build exact-value scan covered 658 `.next` files. The Meta key appeared
+only in two ignored Turbopack cache files, with zero client-static and zero
+deployable-output matches. No secret value was printed, staged, or committed.
+
 ## Final local regression
 
 - `npm run lint`: PASS.

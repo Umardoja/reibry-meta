@@ -7,7 +7,7 @@ import type { RetrievalItem } from "../src/lib/retrieval/contracts.ts";
 const authorization = "I_AUTHORIZE_BILLABLE_META_TEST";
 if (process.env.META_LIVE_VERIFY !== authorization) {
   console.error(`Live verification is disabled. After explicit owner approval, set META_LIVE_VERIFY=${authorization} and MODEL_API_KEY, then rerun npm run verify:meta.`);
-  console.error("Synthetic request ceiling: at most 2 requests including one transient retry, under 2 KB input and 800 maximum output tokens per request; estimated worst-case Standard cost is below $0.01.");
+  console.error("Synthetic request ceiling: exactly 1 request with no retry, at most 2,100 serialized request bytes and 800 maximum output tokens; estimated worst-case Standard cost is below $0.01.");
   process.exitCode = 2;
 } else if (!process.env.MODEL_API_KEY) {
   console.error("MODEL_API_KEY is missing. Set it only in the server process environment; never commit it or pass it in a URL.");
@@ -20,10 +20,11 @@ if (process.env.META_LIVE_VERIFY !== authorization) {
   };
   let requests = 0; let lastHttpStatus: number | null = null;
   const countedFetch: typeof fetch = async (input, init) => {
-    requests++; if (requests > 2) throw new Error("Live verification request ceiling exceeded.");
+    requests++; if (requests > 1) throw new Error("Live verification request ceiling exceeded.");
     const response = await fetch(input, init); lastHttpStatus = response.status; return response;
   };
-  const reasoner = createMetaReasoner({ ...defaultMetaDependencies, env: { MODEL_API_KEY: process.env.MODEL_API_KEY, META_RATE_LIMIT_MODE: "in-memory" }, fetch: countedFetch }, 800);
+  const reasoner = createMetaReasoner({ ...defaultMetaDependencies, env: { MODEL_API_KEY: process.env.MODEL_API_KEY, META_RATE_LIMIT_MODE: "in-memory" },
+    fetch: countedFetch, maxAttempts: 1 }, 800, "minimal");
   const started = performance.now();
   try {
     const result = await reasoner("What does the synthetic launch checklist require?", [synthetic], new AbortController().signal);

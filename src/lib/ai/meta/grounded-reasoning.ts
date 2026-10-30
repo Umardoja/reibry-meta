@@ -10,7 +10,8 @@ Metadata-only links contain only a saved title/hostname/URL provenance; explicit
 If evidence is incomplete, say so and use partial or insufficient. Cite only memory_id values supplied below.
 Proposed next steps are suggestions only. Never claim they were executed and never imply a database, calendar, reminder, or plan was changed.`;
 
-export function buildMetaRequest(question: string, evidence: ReturnType<typeof toModelEvidence>, maxOutputTokens = META_OUTPUT_TOKENS_MAX) {
+export function buildMetaRequest(question: string, evidence: ReturnType<typeof toModelEvidence>, maxOutputTokens = META_OUTPUT_TOKENS_MAX,
+  reasoningEffort?: "minimal" | "low" | "medium" | "high" | "xhigh" | "max") {
   return {
     model: META_MODEL,
     store: false,
@@ -19,6 +20,7 @@ export function buildMetaRequest(question: string, evidence: ReturnType<typeof t
     input: JSON.stringify({ question, evidence }),
     tools: [],
     text: { format: { type: "json_schema", name: "reibry_grounded_answer", strict: true, schema: groundedAnswerSchema } },
+    ...(reasoningEffort ? { reasoning: { effort: reasoningEffort } } : {}),
   };
 }
 export function extractMetaOutputText(body: unknown) {
@@ -46,11 +48,12 @@ export function extractMetaOutputText(body: unknown) {
   return value;
 }
 export type MetaReasoner = (question: string, items: RetrievalItem[], signal: AbortSignal) => Promise<AskResponse>;
-export function createMetaReasoner(dependencies: MetaClientDependencies = defaultMetaDependencies, maxOutputTokens = META_OUTPUT_TOKENS_MAX): MetaReasoner {
+export function createMetaReasoner(dependencies: MetaClientDependencies = defaultMetaDependencies, maxOutputTokens = META_OUTPUT_TOKENS_MAX,
+  reasoningEffort?: "minimal" | "low" | "medium" | "high" | "xhigh" | "max"): MetaReasoner {
   return async (question, items, signal) => {
     let evidence;
     try { evidence = toModelEvidence(items); } catch { throw new MetaClientError("META_INVALID_RESPONSE"); }
-    const result = await callMetaResponses(buildMetaRequest(question, evidence, maxOutputTokens), signal, dependencies);
+    const result = await callMetaResponses(buildMetaRequest(question, evidence, maxOutputTokens, reasoningEffort), signal, dependencies);
     let parsed: unknown;
     try { parsed = JSON.parse(extractMetaOutputText(result.body)); }
     catch (error) { if (error instanceof MetaClientError) throw error; throw new MetaClientError("META_INVALID_RESPONSE", "invalid_json"); }

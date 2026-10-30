@@ -53,6 +53,19 @@ must first confirm the exact project reference out-of-band; linking, dry-run,
 migration application, account creation, and data writes are separate approval
 steps.
 
+Stage 12D repeated the read-only preflight with the same result: Auth is
+reachable, but all application-table probes return 404. The owner has not yet
+affirmatively confirmed the configured project reference as the separate
+disposable REIBRY Meta staging project. The Supabase CLI is also unavailable.
+For those two independent reasons, project linking, remote migration-history
+inspection, and `supabase db push --dry-run` were not run.
+
+The next authorized staging operation must begin with the owner's explicit
+out-of-band confirmation of the exact project reference. Then install or make a
+reviewed current Supabase CLI available, link only that confirmed project, and
+run `supabase db push --dry-run`. That approval must not include real `db push`,
+user creation, dashboard changes, migration repair, reset, or row writes.
+
 ## Approved two-user test plan
 
 After migrations and account creation receive approval:
