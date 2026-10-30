@@ -232,7 +232,48 @@ the new migration. It was applied once with `supabase db push --linked`.
 Two-user hosted RLS and persistence remain **NOT VERIFIED**; the prerequisites
 above are unchanged.
 
-## Approved two-user test plan
+(Stage 12F-2 later verified two-user isolation and persistence live; see
+[HOSTED_AUTH_PERSISTENCE_RESULTS.md](HOSTED_AUTH_PERSISTENCE_RESULTS.md).)
+
+## Stage 12F-3 stale-version conflict fix (2026-10-30)
+
+**Migration.** `20261030050000_stale_version_conflict_sqlstate.sql` replaces
+three functions, changing only the conflict SQLSTATE from `40001` to `PT409`:
+
+- `update_owned_plan`
+- `update_owned_ready_pack_checklist`
+- `confirm_owned_ready_pack` (two sites)
+
+The migration's guard confirms that `SECURITY DEFINER`, `search_path`, and
+EXECUTE grants are unchanged. The hosted history now has nine versions. The
+full account is in [POSTGREST_CONFLICT_FIX.md](POSTGREST_CONFLICT_FIX.md).
+
+### Rules for future migrations
+
+- **Never use `40001` (or another retryable SQLSTATE) for a business
+  conflict.** The hosted PostgREST (14.18) re-runs the transaction
+  indefinitely, even after the client disconnects. Use a PostgREST status code
+  such as `PT409`.
+- **Verify conflict and error paths through PostgREST at the hosted version.**
+  Direct-SQL harness results do not establish HTTP behavior.
+
+### Detecting a runaway retry loop (read-only)
+
+Look for:
+
+- a fast-rising `pg_stat_database.xact_rollback` with almost no commits;
+- `authenticator` client backends in
+  `active` / `idle in transaction (aborted)` state, running a
+  `WITH pgrst_source …` call to the affected RPC.
+
+Replacing the offending function with a non-retryable SQLSTATE ends the loop.
+No session termination is needed.
+
+### CLI identity check
+
+The CLI account can lose project visibility between stages; this happened
+during Stage 12F-3. Repeat the private reference comparison before every hosted
+write.
 
 After migrations and account creation receive approval:
 

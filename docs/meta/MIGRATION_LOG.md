@@ -387,3 +387,40 @@
 - Validation: lint PASS; typecheck PASS; 191/191 tests PASS; build PASS; `git diff --check` PASS. The secret key was found only in one ignored Turbopack cache file.
 - External safety: no Meta request, migration, Auth-setting change, Git remote or LFS operation, deployment, or original REIBRY modification.
 - Push status: NOT PUSHED.
+
+## Stage 12F-3 - Bounded stale-version conflicts and API error mapping
+
+- Date: 2026-10-30 (Africa/Lagos).
+- Parent: `aad833558f29a73b83cd2d889f62a319ba3aa0fc` on `feat/original-product-parity`. The pre-existing `.env.example` edit, ignored `.env.local`, untracked Stage 1 recovery report, and ignored `.auth/` and `test-results/` artifacts were preserved and not staged.
+- Root cause: four business conflicts raised SQLSTATE `40001`:
+  - the Plan version check;
+  - the checklist version check;
+  - the Ready Pack re-confirm stale-version check;
+  - the competing Ready Pack creation.
+
+  The hosted PostgREST 14.18 retries `40001` transactions indefinitely, including after the client disconnects. Local PostgREST 16.4 does not retry, so the earlier "PostgREST retries" claim was version-specific. No genuine engine serialization handling was changed.
+- Migration: added `20261030050000_stale_version_conflict_sqlstate.sql`, which replaces the three functions with bodies identical to the applied ones except `40001` → `PT409`. Its in-transaction guard checks `SECURITY DEFINER`, `search_path`, no remaining `40001`, no `anon`/`PUBLIC` EXECUTE, and that `authenticated` keeps EXECUTE.
+- Application:
+  - Plan and Ready Pack repositories map `PT409` (and genuine `40001`) to `CONFLICT` 409;
+  - the Ready Pack handler maps Plan `NOT_FOUND` to 404;
+  - `missingSession` accepts GoTrue's 400 `validation_failed`, so a malformed refresh token gives 401.
+- Local: tested on an isolated Supabase Postgres 17.11 with PostgREST 16.4 and with 14.18, the hosted version.
+  - On 14.18 before the fix, the stale update hung and the loop persisted for at least 60 s after the client aborted.
+  - After the fix, 27/27 checks passed: 409 `PT409` in 11–124 ms, no retry, no partial writes, safe concurrency, idempotency, cross-user and anonymous denial, and an identical ACL matrix.
+  - Applying the migration to a running loop stopped it.
+  - Local containers and network were removed afterwards.
+- Hosted:
+  - The CLI temporarily lost project visibility. Nothing hosted was touched until the owner re-authenticated and the reference matched.
+  - A read-only check then found four orphaned Stage 12F-2 loops: about 2,000 rollbacks/s and 7.28 million rollbacks in total.
+  - Deployment paused for owner approval. The dry-run showed only the new migration, and one push applied it.
+  - Rollbacks then dropped to 0 per 5 s with no looping backends and no session terminated. History has nine versions.
+- Live (existing synthetic users only):
+  - Hosted PostgREST: stale Plan update 409 `PT409` in 234 ms; stale checklist 409 in 196 ms.
+  - App: stale updates return 409 `CONFLICT` in about 0.4 s (was 504 after 8 s).
+  - Cross-user Ready Pack requests return 404, and a malformed refresh token returns 401.
+  - Isolation holds in both directions. Live totals: 12/12 and 25/25.
+  - Hosted rollbacks rose by exactly one per deliberate stale request.
+- Provenance: the two synthetic Stage 12F-2 proposals still carry RPC-forced `meta:muse-spark-1.3` / `server-validated-meta` metadata. This is not evidence of a Muse call. A distinct test provenance is a separate schema follow-up.
+- Validation: lint PASS; typecheck PASS; 195/195 tests PASS (191 plus four new conflict/404/session cases); build PASS; `git diff --check` PASS. The secret key appeared only in ignored Turbopack cache files.
+- External safety: no new users, Auth-setting changes, resets, repairs, session terminations, Meta requests, Git remote or LFS operations, deployments, or original REIBRY changes. Docker Desktop was started for the isolated test and quit afterwards; it briefly auto-started unrelated local containers.
+- Push status: NOT PUSHED.

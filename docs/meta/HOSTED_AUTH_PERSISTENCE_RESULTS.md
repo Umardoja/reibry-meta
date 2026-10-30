@@ -10,7 +10,16 @@ local manifest `.auth/stage12f2/`.
 
 ## Verdict
 
-**PARTIAL.** Hosted Auth, two-user isolation, persistence, and the trusted
+> **Stage 12F-3 update (2026-10-30):** all three defects below are fixed and
+> verified live. Migration `20261030050000_stale_version_conflict_sqlstate.sql`
+> changed the stale-version SQLSTATE from `40001` to `PT409`, and the related
+> application error-mapping fixes are in place. Stale updates now return 409 in
+> under 0.5 s. Cross-user Ready Pack requests return 404, and a malformed
+> refresh token returns 401. Four orphaned retry loops left by this stage's
+> stale requests were found on hosted and stopped by the migration. See
+> [POSTGREST_CONFLICT_FIX.md](POSTGREST_CONFLICT_FIX.md).
+
+**PARTIAL (at Stage 12F-2).** Hosted Auth, two-user isolation, persistence, and the trusted
 proposal boundary all hold under real sessions. No cross-user read, write,
 reference, or confirmation succeeded anywhere. One correctness defect blocks
 release: every **stale-version conflict hangs in PostgREST** instead of
@@ -179,7 +188,12 @@ all attempts, the targeted records were unchanged.
 
 ### 1. Stale-version conflicts hang in PostgREST
 
-Severity: **release blocker**.
+Severity: **release blocker**. **Status: FIXED in Stage 12F-3.**
+
+Correction to the explanation below: the retry is specific to the hosted
+PostgREST 14.18. Locally, PostgREST 16.4 returned 500 immediately. The orphaned
+loops persisted after the clients disconnected, and four were still running an
+hour later until the fix migration replaced the functions.
 
 `update_owned_plan` signals version conflicts with SQLSTATE `40001`
 (`serialization_failure`). So do `confirm_owned_ready_pack` and
@@ -214,7 +228,8 @@ repository mapping for that code. Verify it through PostgREST, not SQL alone.
 
 ### 2. Ready Pack routes return 503 for another user's Plan
 
-Severity: low.
+Severity: low. **Status: FIXED in Stage 12F-3**; both directions now return
+404 `NOT_FOUND`.
 
 `GET /api/ready-packs/candidates?planId=<other user's plan>` and
 `POST /api/ready-packs` both return 503 `STORAGE_UNAVAILABLE` instead of 404.
@@ -224,7 +239,9 @@ failure. This does not leak data. It is an application-only fix.
 
 ### 3. Malformed refresh token returns 503 instead of 401
 
-Severity: low.
+Severity: low. **Status: FIXED in Stage 12F-3.** GoTrue's 400
+`validation_failed` is now treated as a missing session: the API returns 401
+and clears the cookie, and pages redirect to `/auth`.
 
 A session cookie with an expired access token and a syntactically invalid
 refresh token gets 503 instead of 401. Real expiry and revocation behave
@@ -322,10 +339,10 @@ synthetic pattern.
 
 ## Remaining release blockers
 
-1. Fix and re-verify the `40001` stale-version hang through PostgREST.
-   This needs a migration approval.
-2. Map Plan `NOT_FOUND` in the Ready Pack routes, and map a malformed refresh
-   token to 401. Both are application-only changes.
+1. ~~Fix and re-verify the `40001` stale-version hang through PostgREST.~~
+   Done in Stage 12F-3.
+2. ~~Map Plan `NOT_FOUND` in the Ready Pack routes, and map a malformed refresh
+   token to 401.~~ Done in Stage 12F-3.
 3. Verify real sign-up email delivery and the `/auth/callback` redirect
    allowlist.
 4. Check keyboard navigation on a real mobile device.

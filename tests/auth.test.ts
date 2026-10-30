@@ -67,7 +67,10 @@ test("expired session is cleared and protected endpoint refuses it", async () =>
   const result = await handleAuth("me", get("me"), () => adapter({ verify: async () => null }), true);
   assert.equal(result.status, 401); assert.equal(result.clearSession, true); assert.equal(result.data, null);
   assert.equal(missingSession({ code: "refresh_token_not_found" }), true);
+  // GoTrue answers a malformed stored refresh token with 400 validation_failed: an invalid session, not an outage.
+  assert.equal(missingSession({ name: "AuthApiError", status: 400, code: "validation_failed" }), true);
   assert.equal(missingSession({ status: 503 }), false);
+  assert.equal(missingSession({ name: "AuthRetryableFetchError", status: 0 }), false);
 });
 test("no cookies means no provider call and no protected data", async () => {
   const factory = () => { throw new Error("must not call"); };
