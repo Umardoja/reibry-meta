@@ -3,7 +3,11 @@ import type { JsonValue, Memory } from "../memory/contracts.ts";
 import type { MemoryRepository } from "../memory/repository.ts";
 import { SEARCH_CANDIDATE_MAX, validateRetrievalItem, type EvidenceField, type RetrievalItem, type RetrievalResponse } from "./contracts.ts";
 
-const STOP = new Set("a an and are as at by for from how i in is it me my of on or that the this to was what where which with you your".split(" "));
+// Conversational filler ("did I save anything about...") must not count as evidence terms.
+const STOP = new Set(("a an and are as at by for from how i in is it me my of on or that the this to was what where which with you your " +
+  "am be been being can could did do does done any anything something some have has had got get about please tell show find look " +
+  "saved save remember know want need also just there then them they those these its im i'm we our us if so not no yes ok okay " +
+  "hey hi hello thanks thank would should will meant mean help like maybe").split(" "));
 export function normalizeQuery(value: string) {
   const phrase = value.normalize("NFKC").toLocaleLowerCase("en").replace(/[^\p{L}\p{N}]+/gu, " ").replace(/\s+/g, " ").trim();
   const terms = [...new Set(phrase.split(" ").filter(term => term.length > 1 && !STOP.has(term)))].slice(0, 12);
@@ -57,4 +61,12 @@ export function rankMemories(memories: Memory[], query: string, limit: number): 
 
 export async function searchOwnedMemories(repository: MemoryRepository, query: string, limit: number) {
   return rankMemories(await repository.searchCandidates(SEARCH_CANDIDATE_MAX), query, limit);
+}
+
+/** Evidence for a Memory the user is referring back to; the caller must have read it through the owner-bound repository. */
+export function memoryEvidenceItem(memory: Memory): RetrievalItem {
+  return validateRetrievalItem({ memoryId: memory.id, memoryHref: `/memories#memory-${memory.id}`, displayTitle: memory.title,
+    sourceType: memory.sourceType, storedExcerpt: memory.sourceType === "text" ? excerpt(memory.rawText, "", []) : null,
+    matchedSourceMetadata: metadataValues(memory.metadata).slice(0, 3).map(value => value.slice(0, 200)), sourceUrl: memory.sourceUrl,
+    processingStatus: memory.analysisStatus, match: { reason: "Shown earlier in this conversation.", score: 1, fields: ["title"] } });
 }

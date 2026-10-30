@@ -40,7 +40,7 @@ export function AskReibry({ variant = "ask" }: { variant?: "ask" | "home" }) {
     {view.state === "error" && <div className="ask-feedback"><p className="auth-error" role="alert">{view.message}</p>
       <button className="button btn-ghost" type="button" onClick={() => void ask(view.question)}>Retry</button></div>}
     {view.state === "ready" && view.result && <Card className="ask-answer">
-      <div className="ask-answer-heading"><h2>Grounded answer</h2><span className="edition-pill">{view.result.evidence_status}</span></div>
+      <div className="ask-answer-heading"><h2>Grounded answer</h2><span className="edition-pill">{view.result.evidence_status.replace("_", " ")}</span></div>
       <p>{view.result.answer}</p>
       {view.result.citations.length > 0 && <section aria-labelledby="ask-citations"><h3 id="ask-citations">Saved evidence</h3><ul>
         {view.result.citations.map(citation => <li key={citation.memory_id}><a href={citation.memory_href}>{citation.title}</a>

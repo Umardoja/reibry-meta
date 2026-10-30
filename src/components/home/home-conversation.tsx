@@ -6,9 +6,23 @@ import { ActionProposalReview } from "@/components/actions/action-proposal-revie
 import { RequireAuth } from "@/components/auth/require-auth";
 import { PageContainer, StatePanel } from "@/components/ui/primitives";
 import type { ActionProposalView } from "@/lib/actions/contracts";
-import type { HomeResponse } from "@/lib/home/contracts";
+import { HOME_HISTORY_CHARS_MAX, HOME_HISTORY_TEXT_MAX, HOME_HISTORY_TURNS_MAX, HOME_REFERENCES_MAX, type HomeHistoryTurn, type HomeResponse } from "@/lib/home/contracts";
 
 type Turn = { id: number; role: "user" | "assistant"; text?: string; response?: HomeResponse };
+type Outgoing = { message: string; mode: "message" | "confirm-life"; history: HomeHistoryTurn[]; references: string[] };
+
+// Recent turns give REIBRY conversational context. The server treats them as untrusted and re-validates every Memory reference.
+function recentHistory(turns: Turn[]): HomeHistoryTurn[] {
+  const history = turns.map(turn => ({ role: turn.role, text: (turn.role === "user" ? turn.text : turn.response?.message)?.trim().slice(0, HOME_HISTORY_TEXT_MAX) ?? "" }))
+    .filter(turn => turn.text).slice(-HOME_HISTORY_TURNS_MAX);
+  while (history.reduce((total, turn) => total + turn.text.length, 0) > HOME_HISTORY_CHARS_MAX) history.shift();
+  return history;
+}
+function shownMemoryIds(turns: Turn[]) {
+  const last = [...turns].reverse().find(turn => turn.role === "assistant")?.response;
+  const ids = last?.groundedAnswer?.citations.length ? last.groundedAnswer.citations.map(item => item.memory_id) : last?.memories.map(item => item.memoryId) ?? [];
+  return ids.slice(0, HOME_REFERENCES_MAX);
+}
 
 function EvidenceList({ response }: { response: HomeResponse }) {
   const items = response.groundedAnswer?.citations.map(item => ({ id: item.memory_id, href: item.memory_href, title: item.title,
@@ -28,42 +42,45 @@ function LifeList({ response }: { response: HomeResponse }) {
 
 export function HomeConversation() {
   const [turns, setTurns] = useState<Turn[]>([]); const [text, setText] = useState(""); const [loading, setLoading] = useState(false); const [error, setError] = useState("");
-  const nextId = useRef(0); const controller = useRef<AbortController | null>(null); const endRef = useRef<HTMLDivElement>(null); const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const nextId = useRef(0); const lastRequest = useRef<Outgoing | null>(null); const inFlight = useRef(false); const controller = useRef<AbortController | null>(null); const endRef = useRef<HTMLDivElement>(null); const textareaRef = useRef<HTMLTextAreaElement>(null);
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth", block: "end" }); }, [turns, loading]);
   function append(...items: Turn[]) { setTurns(current => [...current, ...items].slice(-24)); }
   function updateProposal(turnId: number, proposal: ActionProposalView) { setTurns(current => current.map(turn => turn.id === turnId && turn.response ? { ...turn, response: { ...turn.response,
     actionProposals: turn.response.actionProposals.map(item => item.id === proposal.id ? proposal : item),
     groundedAnswer: turn.response.groundedAnswer ? { ...turn.response.groundedAnswer, action_proposals: turn.response.groundedAnswer.action_proposals.map(item => item.id === proposal.id ? proposal : item) } : null } } : turn)); }
-  async function request(message: string, mode: "message" | "confirm-life" = "message") {
+  async function request(outgoing: Outgoing) {
+    // Synchronous guard: React state has not re-rendered between two rapid clicks, so `loading` alone allowed duplicate sends.
+    if (inFlight.current) return; inFlight.current = true; lastRequest.current = outgoing;
     controller.current?.abort(); const active = new AbortController(); controller.current = active; const timer = setTimeout(() => active.abort(), 32_000);
     setLoading(true); setError("");
     try { const response = await fetch("/api/home", { method: "POST", credentials: "same-origin", cache: "no-store", signal: active.signal,
-        headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message, mode, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC" }) });
+        headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...outgoing, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC" }) });
       const body = await response.json(); if (!response.ok || !body?.data) throw new Error(body?.error?.message || "REIBRY could not complete that request.");
       append({ id: ++nextId.current, role: "assistant", response: body.data });
     } catch (cause) { setError(cause instanceof Error && cause.name !== "AbortError" ? cause.message : "REIBRY took too long to respond."); }
-    finally { clearTimeout(timer); if (controller.current === active) controller.current = null; setLoading(false); }
+    finally { clearTimeout(timer); if (controller.current === active) { controller.current = null; inFlight.current = false; } setLoading(false); }
   }
-  function submit(event?: FormEvent) { event?.preventDefault(); const value = text.trim(); if (!value || loading) return; append({ id: ++nextId.current, role: "user", text: value }); setText(""); void request(value); }
+  function submit(event?: FormEvent) { event?.preventDefault(); const value = text.trim(); if (!value || loading || inFlight.current) return;
+    const outgoing: Outgoing = { message: value, mode: "message", history: recentHistory(turns), references: shownMemoryIds(turns) };
+    append({ id: ++nextId.current, role: "user", text: value }); setText(""); void request(outgoing); }
   function choose(value: string) { setText(value); textareaRef.current?.focus(); }
   function onKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) { if (window.matchMedia("(hover: hover) and (pointer: fine)").matches && event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); submit(); } }
-  function newChat() { controller.current?.abort(); setTurns([]); setText(""); setError(""); setLoading(false); }
+  function newChat() { controller.current?.abort(); inFlight.current = false; lastRequest.current = null; setTurns([]); setText(""); setError(""); setLoading(false); }
   return <RequireAuth nextPath="/"><PageContainer className={`home-page${turns.length ? " home-page-conversation" : ""}`}>
     <div className="home-intro"><div className="home-intro-row"><p className="section-label">From saved to done</p>{turns.length > 0 && <button type="button" className="home-new-chat" onClick={newChat}>New chat</button>}</div>
       <h1 className="page-h1">What are you trying to do?</h1><p className="page-sub">Ask about something you&apos;ve saved, or tell REIBRY what&apos;s coming up.</p></div>
     <section className="home-thread" aria-label="Conversation with REIBRY">
       {!turns.length && <div className="home-welcome"><span className="home-assistant-label">REIBRY</span><p>Tell me what you&apos;re planning, or ask about something you&apos;ve saved.</p><div className="home-suggestions">
         <button type="button" onClick={() => choose("Find my saved travel notes")}>Find a Memory</button><button type="button" onClick={() => choose("Add my meeting tomorrow at 10am")}>Plan something</button><button type="button" onClick={() => choose("What's coming up?")}>What&apos;s coming up?</button></div></div>}
-      {turns.map(turn => <div key={turn.id} className={turn.role === "user" ? "home-turn home-turn-user" : "home-turn home-turn-assistant"}>{turn.role === "user" ? <p className="home-user-bubble">{turn.text}</p> : turn.response && <div className="home-assistant-turn"><span className="home-assistant-label">REIBRY</span><p>{turn.response.message}</p>
-        {turn.response.groundedAnswer && <p className="home-grounding-status">Evidence: {turn.response.groundedAnswer.evidence_status}{!turn.response.groundedAnswer.provider_called ? " · Muse Spark was not called because no matching evidence was found." : ""}</p>}
+      {turns.map(turn => <div key={turn.id} className={turn.role === "user" ? "home-turn home-turn-user" : "home-turn home-turn-assistant"}>{turn.role === "user" ? <p className="home-user-bubble">{turn.text}</p> : turn.response && <div className="home-assistant-turn"><span className="home-assistant-label">REIBRY</span><p className="home-assistant-text">{turn.response.message}</p>
         <EvidenceList response={turn.response}/><LifeList response={turn.response}/>
         {turn.response.lifeDraft && <div className="home-draft-card"><p><strong>{turn.response.lifeDraft.title}</strong></p><p>{new Intl.DateTimeFormat(undefined, { dateStyle: "full", timeStyle: "short" }).format(new Date(turn.response.lifeDraft.startDate!))} · {turn.response.lifeDraft.type}</p><p className="field-hint">This is a draft. It has not been saved and no reminder is scheduled.</p><div className="home-message-actions">
-          <button className="home-action-chip" type="button" disabled={loading} onClick={() => void request(turn.response!.lifeDraft!.sourceText, "confirm-life")}>Save to Life</button><Link className="home-action-chip" href="/life">Review Life</Link></div></div>}
+          <button className="home-action-chip" type="button" disabled={loading} onClick={() => void request({ message: turn.response!.lifeDraft!.sourceText, mode: "confirm-life", history: [], references: [] })}>Save to Life</button><Link className="home-action-chip" href="/life">Review Life</Link></div></div>}
         {turn.response.savedLife && <Link className="home-action-chip" href={turn.response.savedLife.href}>View saved Life context</Link>}
         {turn.response.actionProposals.length > 0 && <ActionProposalReview proposals={turn.response.actionProposals} onChanged={proposal => updateProposal(turn.id, proposal)} />}
       </div>}</div>)}
-      {loading && <div className="home-turn home-turn-assistant" aria-live="polite"><div className="home-assistant-turn"><span className="home-assistant-label">REIBRY</span><p className="home-typing">Looking through your saved information…</p></div></div>}
-      {error && <StatePanel tone="error">{error} <button type="button" className="home-retry" onClick={() => { const prior = [...turns].reverse().find(turn => turn.role === "user")?.text; if (prior) void request(prior); }}>Try again</button></StatePanel>}
+      {loading && <div className="home-turn home-turn-assistant" aria-live="polite"><div className="home-assistant-turn"><span className="home-assistant-label">REIBRY</span><p className="home-typing">Thinking…</p></div></div>}
+      {error && <StatePanel tone="error">{error} <button type="button" className="home-retry" disabled={loading} onClick={() => { if (lastRequest.current) void request(lastRequest.current); }}>Try again</button></StatePanel>}
       <div className="home-thread-end" ref={endRef}/>
     </section>
     <form className="home-composer" onSubmit={submit}><label htmlFor="home-input" className="sr-only">Message REIBRY</label><textarea ref={textareaRef} id="home-input" rows={1} maxLength={500} value={text}

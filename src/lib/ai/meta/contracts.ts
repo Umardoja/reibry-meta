@@ -11,7 +11,8 @@ export const META_OUTPUT_TOKENS_MAX = 800;
 export const META_MODEL = "muse-spark-1.3";
 export const META_ENDPOINT = "https://api.meta.ai/v1/responses";
 
-export type EvidenceStatus = "supported" | "partial" | "insufficient";
+// not_needed marks conversational turns (greetings, capability questions) that make no claim about saved evidence.
+export type EvidenceStatus = "supported" | "partial" | "insufficient" | "not_needed";
 export type ModelEvidence = {
   memory_id: string;
   title: string;
@@ -25,6 +26,8 @@ export type ModelEvidence = {
   };
   processing_status: RetrievalItem["processingStatus"];
   match_reason: string;
+  /** 1-based position in the previous assistant turn when the user is referring back to it ("the second one"). */
+  shown_earlier_position: number | null;
 };
 export type GroundedModelAnswer = {
   answer: string;
@@ -56,7 +59,7 @@ export const groundedAnswerSchema = {
   additionalProperties: false,
   properties: {
     answer: { type: "string" },
-    evidence_status: { type: "string", enum: ["supported", "partial", "insufficient"] },
+    evidence_status: { type: "string", enum: ["supported", "partial", "insufficient", "not_needed"] },
     cited_memory_ids: { type: "array", items: { type: "string" } },
     proposed_next_steps: {
       type: "array", items: {
@@ -98,7 +101,7 @@ export function sanitizeSourceUrl(value: string | null) {
   } catch { return null; }
 }
 
-export function toModelEvidence(items: RetrievalItem[]): ModelEvidence[] {
+export function toModelEvidence(items: RetrievalItem[], shownEarlier: ReadonlyMap<string, number> = new Map()): ModelEvidence[] {
   const result = items.slice(0, META_EVIDENCE_MAX).map(item => {
     const sanitized = sanitizeSourceUrl(item.sourceUrl);
     let hostname: string | null = null;
@@ -112,18 +115,21 @@ export function toModelEvidence(items: RetrievalItem[]): ModelEvidence[] {
       source_provenance: { kind: item.sourceType === "text" ? "stored-note" as const : "metadata-only-link" as const, hostname, sanitized_url: sanitized },
       processing_status: item.processingStatus,
       match_reason: item.match.reason.slice(0, 180),
+      shown_earlier_position: shownEarlier.get(item.memoryId) ?? null,
     };
   });
   if (new TextEncoder().encode(JSON.stringify(result)).length > META_EVIDENCE_BYTES_MAX) throw new MetaContractError("Evidence payload is too large.");
   return result;
 }
 
+// Any natural acknowledgement that only the saved link details (not the video/page itself) are available.
+const metadataLimitAcknowledged = /metadata|saved (?:title|link|details)|limited evidence|only (?:have|saved|see|know) (?:the |its |a )?(?:link|title|url|address)|(?:haven't|have not|can't|cannot|couldn't|didn't|don't) (?:watch|see|open|read|access|view)/i;
 const unsupportedMetadataClaim = /\b(transcript says|video says|article says|webpage says|page says|i watched|i read the (?:article|page)|full (?:video|webpage|article))\b/i;
 export function validateGroundedAnswer(value: unknown, evidence: ModelEvidence[]): GroundedModelAnswer {
   if (!value || typeof value !== "object") throw new MetaContractError("Model output is not an object.");
   const object = value as Record<string, unknown>;
   if (!exactKeys(object, ["answer", "evidence_status", "cited_memory_ids", "proposed_next_steps"]) ||
-      !boundedString(object.answer, 2_000) || !["supported", "partial", "insufficient"].includes(String(object.evidence_status)) ||
+      !boundedString(object.answer, 2_000) || !["supported", "partial", "insufficient", "not_needed"].includes(String(object.evidence_status)) ||
       !strings(object.cited_memory_ids, META_EVIDENCE_MAX) || !Array.isArray(object.proposed_next_steps) || object.proposed_next_steps.length > 3)
     throw new MetaContractError("Model output does not match the grounded answer contract.");
   const available = new Map(evidence.map(item => [item.memory_id, item]));
@@ -137,11 +143,12 @@ export function validateGroundedAnswer(value: unknown, evidence: ModelEvidence[]
     if ((item.supporting_memory_ids as string[]).some(id => !available.has(id))) throw new MetaContractError("Proposed next step cited an unknown Memory.", "citation_mismatch");
     return { title: item.title as string, description: item.description as string, supporting_memory_ids: item.supporting_memory_ids as string[] };
   });
-  if (object.evidence_status !== "insufficient" && cited.length === 0) throw new MetaContractError("A supported answer must cite supplied evidence.");
+  if ((object.evidence_status === "supported" || object.evidence_status === "partial") && cited.length === 0) throw new MetaContractError("A supported answer must cite supplied evidence.");
+  if (object.evidence_status === "not_needed" && (cited.length > 0 || steps.length > 0)) throw new MetaContractError("A conversational reply cannot cite or propose from evidence.");
   const referenced = [...cited, ...steps.flatMap(step => step.supporting_memory_ids)];
   const citedMetadataOnly = referenced.some(id => available.get(id)?.source_provenance.kind === "metadata-only-link");
   const combined = [object.answer as string, ...steps.map(step => step.description)].join(" ");
   if (citedMetadataOnly && unsupportedMetadataClaim.test(combined)) throw new MetaContractError("Model claimed unavailable source content.", "grounding_violation");
-  if (citedMetadataOnly && !/metadata|saved title|limited evidence/i.test(object.answer as string)) throw new MetaContractError("Metadata-only evidence limitation was omitted.", "grounding_violation");
+  if (citedMetadataOnly && !metadataLimitAcknowledged.test(object.answer as string)) throw new MetaContractError("Metadata-only evidence limitation was omitted.", "grounding_violation");
   return { answer: object.answer as string, evidence_status: object.evidence_status as EvidenceStatus, cited_memory_ids: cited, proposed_next_steps: steps };
 }

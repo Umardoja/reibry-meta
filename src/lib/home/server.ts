@@ -2,7 +2,7 @@ import "server-only";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { createSupabaseActionRepository } from "../actions/supabase-repository.ts";
-import { createMetaReasoner } from "../ai/meta/grounded-reasoning.ts";
+import { createConversationReasoner } from "../ai/meta/grounded-reasoning.ts";
 import { sharedAskRateLimiter } from "../ai/server.ts";
 import { canonicalOrigin } from "../auth/origin.ts";
 import { AuthFailure, missingSession, providerFailure } from "../auth/policy.ts";
@@ -26,7 +26,7 @@ export async function homeApiRoute(request: Request) {
     return { userId: data.user.id, memoryRepository: createSupabaseMemoryRepository(client, data.user.id),
       lifeRepository: createSupabaseLifeRepository(client, data.user.id),
       actionRepository: createSupabaseActionRepository(client, data.user.id, { client: () => createTrustedProposalClient(signal) }) };
-  }, createMetaReasoner(), sharedAskRateLimiter, origin);
+  }, createConversationReasoner(), sharedAskRateLimiter, origin);
   const response = NextResponse.json({ data: result.data, error: result.error }, { status: result.status, headers: homePrivateHeaders });
   return applyAuthCookies(response, result.status === 401 ? jar.clear() : result.error ? [] : jar.writes(), origin.startsWith("https:"));
 }

@@ -298,6 +298,7 @@ h1 { font-size: clamp(2.75rem, 6vw, 4.5rem); line-height: 1.08; letter-spacing: 
 .home-user-bubble { max-width: min(84%, 520px); margin: 0; padding: 11px 15px; border-radius: 18px 18px 4px 18px; background: var(--primary-mid); color: white; line-height: 1.5; overflow-wrap: anywhere; }
 .home-turn-assistant { justify-content: flex-start; }
 .home-assistant-turn { display: grid; gap: 7px; width: min(100%, 620px); min-width: 0; }
+.home-assistant-text { white-space: pre-line; overflow-wrap: anywhere; }
 .home-action-chip { display: inline-flex; align-items: center; justify-content: center; min-height: 42px; margin: 2px 8px 2px 0; padding: 8px 14px; border: 1px solid var(--outline-var); border-radius: 999px; color: var(--primary-mid); background: var(--surface); font: inherit; font-size: 14px; font-weight: 650; text-decoration: none; }
 .home-message-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 2px; }
 .home-page-conversation .home-intro { margin-bottom: 10px; }

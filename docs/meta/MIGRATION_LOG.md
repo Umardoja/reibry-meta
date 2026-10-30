@@ -458,3 +458,23 @@
 - Documentation: added `RELEASE_READINESS.md` and `DEMO_SCRIPT.md`, rewrote `README.md` for submission, and corrected the Stage 12F-2 keyboard note.
 - External safety: no Git push, fetch or LFS, no deployment, no hosted schema or Auth change, no Meta request, no new or deleted users, and no original REIBRY modification.
 - Push status: NOT PUSHED.
+
+## Stage 12H - Local conversational AI quality repair
+
+- Date: 2026-10-30 (Africa/Lagos).
+- Parent: `d5faafee86d3e4461aa003a13909745b7fde8577`. The pre-existing `.env.example` edit, ignored `.env.local`, untracked recovery report, and ignored test manifest and screenshots were preserved and not staged.
+- Reproduced live, before any change and with no Meta spend: 12 of 22 everyday messages got the same fixed menu, 3 got a nonsensical "what date" prompt, 1 was refused as an external tool, and only 3 could reach Muse.
+- Root causes: no conversation history; a regex router that sent most messages to fixed replies; over-broad tool and Life regexes; Muse skipped when lexical search missed; bare model instructions; technical UI text; unprompted proposals; noisy retrieval; a tight output budget; and a double-submit race.
+- Changes:
+  - one Muse conversation path, with deterministic routes kept for trusted reads and the confirm-first Life draft;
+  - bounded, owner-revalidated history and references;
+  - an assistant policy using stateless replay with documented message items (`store=false`, no tools);
+  - `not_needed` evidence status and natural metadata-only wording;
+  - effort `low`, 2,000 tokens, and a single provider attempt;
+  - honest fallbacks with a sanitized `fallbackReason`;
+  - relevance pruning, a planning gate for proposals, and UI fixes (no technical text, line breaks, exact retry, double-submit guard).
+- Live Meta: 12 of 12 allowed requests, no retries, $0.04533 measured ($0.05668 conservative). 11 replies were valid and natural with correct citations. One correction-plus-planning turn fell back, most likely from output-token exhaustion; the fix is mock-verified only.
+- Browser: real authenticated Home at 390/430/1440 px, with conversational replies replayed from the live recording; 55/55 after a scroll-timing re-measure.
+- Validation: lint PASS; typecheck PASS; 221/221 tests PASS (including the 18-category mock-transport evaluation suite); build PASS; `git diff --check` PASS. Keys appear only in ignored compiler caches.
+- External safety: no hosted schema change, no new users, no push, no deployment, and no original REIBRY access. Only synthetic test data was used, under the existing disposable user A (plus one User B note).
+- Push status: NOT PUSHED.
