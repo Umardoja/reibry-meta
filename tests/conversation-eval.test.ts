@@ -162,3 +162,9 @@ test("live 12I defect: a correct title-and-creator reply about a saved link gets
   assert.equal(result.data?.intent, "CONVERSATION"); assert.equal(result.data?.fallbackReason, null);
   assert.match(result.data?.message || "", /not the video or page itself/);
 });
+test("live 12I-1 defect: evidence carries saved_at and the policy leads with the most recently saved match", async () => {
+  const { sent, ask } = harness(() => reply("You most recently saved the Python course note.", [id(4)]));
+  await ask("Find that course I saved and tell me what it's about.");
+  const course = sent[0].context.saved_memory_evidence.find(item => item.memory_id === id(4)) as unknown as { saved_at: string | null };
+  assert.equal(course.saved_at, "2026-10-24T12:00:00.000Z"); assert.match(sent[0].body.instructions, /lead with the most recently saved one \(saved_at\)/);
+});

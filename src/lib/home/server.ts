@@ -27,6 +27,7 @@ export async function homeApiRoute(request: Request) {
       lifeRepository: createSupabaseLifeRepository(client, data.user.id),
       actionRepository: createSupabaseActionRepository(client, data.user.id, { client: () => createTrustedProposalClient(signal) }) };
   }, createConversationReasoner(), sharedAskRateLimiter, origin);
-  const response = NextResponse.json({ data: result.data, error: result.error }, { status: result.status, headers: homePrivateHeaders });
+  const response = NextResponse.json({ data: result.data, error: result.error, diagnostics: result.diagnostics ?? null }, { status: result.status, headers: homePrivateHeaders });
+  if (result.diagnostics) response.headers.set("X-Request-Id", result.diagnostics.requestId);
   return applyAuthCookies(response, result.status === 401 ? jar.clear() : result.error ? [] : jar.writes(), origin.startsWith("https:"));
 }

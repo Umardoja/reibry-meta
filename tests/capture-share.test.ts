@@ -5,24 +5,28 @@ import test from "node:test";
 import { toModelEvidence } from "../src/lib/ai/meta/contracts.ts";
 import { enrichLink, fetchVettedPage, parsePageMetadata, resolveTikTokShareLink, type MetadataFetch, type MetadataResult } from "../src/lib/capture/enrichment.ts";
 import { handleCaptureDetailsRequest } from "../src/lib/capture/handler.ts";
-import { capture, refreshLinkDetails } from "../src/lib/capture/service.ts";
+import { capture, enrichSavedLink } from "../src/lib/capture/service.ts";
 import { parsePublicLink } from "../src/lib/capture/url-policy.ts";
 import { rankMemories } from "../src/lib/retrieval/service.ts";
 import { createInMemoryMemoryRepository, createMemoryTestState } from "./support/in-memory-memory-repository.ts";
+import { createInMemoryEnrichmentWriter, saveAndEnrich, trackedRepository } from "./support/capture-flow.ts";
 
 const userA = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"; const userB = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const publicDns = async () => [{ address: "8.8.8.8" }];
-const repository = (owner = userA, state = createMemoryTestState()) => createInMemoryMemoryRepository(owner, state);
+const repository = (owner = userA, state = createMemoryTestState()) => trackedRepository(owner, state);
 const json = (value: unknown, status = 200) => new Response(JSON.stringify(value), { status, headers: { "content-type": "application/json" } });
 const html = (body: string, status = 200) => new Response(body, { status, headers: { "content-type": "text/html; charset=utf-8" } });
 const redirect = (location: string) => new Response(null, { status: 301, headers: { location } });
 const tiktok = "https://www.tiktok.com/@baker.jo/video/7311223344556677889";
 
-test("a slow provider never blocks the save: the link is stored within the budget with limited details", async () => {
-  const started = Date.now();
-  const result = await capture({ sourceType: "link", content: tiktok }, repository(), () => new Promise<MetadataResult>(() => {}), 50);
-  assert.ok(Date.now() - started < 1_000); assert.equal(result.enrichment.status, "timed-out"); assert.equal(result.enrichment.reason, "save-budget-exceeded");
-  assert.equal(result.memory.sourceUrl, tiktok); assert.equal(result.memory.title, "TikTok video"); assert.equal(result.memory.metadata.enrichment, "timed-out");
+test("save is request 1 and contacts no provider; a hanging provider in request 2 is bounded and the link stays saved", async () => {
+  const repo = repository(); const started = Date.now();
+  const saved = await capture({ sourceType: "link", content: tiktok }, repo);
+  assert.ok(Date.now() - started < 200); assert.equal(saved.enrichment.status, "pending"); assert.equal(saved.memory.metadata.enrichment, "pending");
+  assert.equal(saved.memory.title, "TikTok video by @baker.jo"); assert.equal((saved.memory.metadata.provenance as Record<string, string>).title, "reibry-placeholder");
+  const enriched = await saveAndEnrich({ sourceType: "link", content: tiktok }, repo, () => new Promise<MetadataResult>(() => {}), 50);
+  assert.equal(enriched.duplicate, true); assert.equal(enriched.enrichment.status, "timed-out"); assert.equal(enriched.memory.metadata.enrichment, "timed-out");
+  assert.equal(enriched.memory.sourceUrl, tiktok); assert.equal(enriched.memory.id, saved.memory.id);
 });
 test("provider timeouts are bounded and reported as provider-timeout", async () => {
   const hanging: MetadataFetch = async (_input, init) => new Promise((_resolve, reject) => init?.signal?.addEventListener("abort", () => reject(new Error("aborted")), { once: true }));
@@ -48,16 +52,20 @@ test("TikTok share links resolve through at most 3 vetted redirects to the canon
 });
 test("repeated shares (tracking variants and resolved share links) return the existing owned Memory", async () => {
   const repo = repository(); const offline = async (): Promise<MetadataResult> => ({ status: "unavailable", provider: null, reason: "provider-error", provenance: {} });
-  const first = await capture({ sourceType: "link", content: tiktok }, repo, offline);
-  const tracked = await capture({ sourceType: "link", content: `${tiktok}?is_from_webapp=1&_t=abc` }, repo, offline);
-  const viaShare = await capture({ sourceType: "link", content: "https://vm.tiktok.com/ZMabc123/" }, repo, link => enrichLink(link, { resolve: publicDns,
-    fetcher: async input => new URL(input.toString()).hostname === "vm.tiktok.com" ? redirect(tiktok) : json({ html: "<iframe></iframe>" }) }));
-  assert.equal(tracked.duplicate, true); assert.equal(tracked.memory.id, first.memory.id); assert.equal(viaShare.duplicate, true); assert.equal(viaShare.memory.id, first.memory.id);
-  const yt = await capture({ sourceType: "link", content: "https://www.youtube.com/watch?v=rfscVS0vtbw" }, repo, offline);
-  assert.equal((await capture({ sourceType: "link", content: "https://youtu.be/rfscVS0vtbw?si=share" }, repo, offline)).memory.id, yt.memory.id);
+  const first = await saveAndEnrich({ sourceType: "link", content: tiktok }, repo, offline);
+  const tracked = await saveAndEnrich({ sourceType: "link", content: `${tiktok}?is_from_webapp=1&_t=abc` }, repo, offline);
+  // A share link cannot be resolved without network, so save-first keys it by its own identity; enrichment records the canonical post.
+  const share = (n: number) => saveAndEnrich({ sourceType: "link", content: "https://vm.tiktok.com/ZMabc123/" }, repo, link => enrichLink(link, { resolve: publicDns,
+    fetcher: async input => new URL(input.toString()).hostname === "vm.tiktok.com" ? redirect(`${tiktok}?n=${n}`) : json({ html: "<iframe></iframe>" }) }));
+  const viaShare = await share(1); const viaShareAgain = await share(2);
+  assert.equal(tracked.duplicate, true); assert.equal(tracked.memory.id, first.memory.id);
+  assert.equal(viaShareAgain.duplicate, true); assert.equal(viaShareAgain.memory.id, viaShare.memory.id);
+  assert.equal(viaShare.memory.metadata.canonicalUrl, tiktok); assert.equal(viaShare.memory.metadata.postId, "7311223344556677889");
+  const yt = await saveAndEnrich({ sourceType: "link", content: "https://www.youtube.com/watch?v=rfscVS0vtbw" }, repo, offline);
+  assert.equal((await saveAndEnrich({ sourceType: "link", content: "https://youtu.be/rfscVS0vtbw?si=share" }, repo, offline)).memory.id, yt.memory.id);
 });
 test("TikTok iframe-only oEmbed: post confirmed, creator from URL, no invented title, caption or cover", async () => {
-  const result = await capture({ sourceType: "link", content: tiktok }, repository(), link => enrichLink(link, { resolve: publicDns,
+  const result = await saveAndEnrich({ sourceType: "link", content: tiktok }, repository(), link => enrichLink(link, { resolve: publicDns,
     fetcher: async () => json({ version: "1.0", type: "video", html: "<iframe src=\"https://www.tiktok.com/player/v1/7311223344556677889\"></iframe>", provider_name: "TikTok" }) }));
   assert.equal(result.enrichment.status, "partial"); assert.equal(result.enrichment.reason, "provider-returned-no-title");
   assert.equal(result.memory.title, "TikTok video by @baker.jo"); assert.equal(result.memory.metadata.author, "@baker.jo");
@@ -65,7 +73,7 @@ test("TikTok iframe-only oEmbed: post confirmed, creator from URL, no invented t
   for (const field of ["caption", "thumbnailUrl"]) assert.equal(field in result.memory.metadata, false, field);
 });
 test("blocked, private or deleted posts keep the saved link with an honest reason", async () => {
-  const deleted = await capture({ sourceType: "link", content: tiktok }, repository(), link => enrichLink(link, { resolve: publicDns, fetcher: async () => json({ code: 10204, message: "not found" }, 404) }));
+  const deleted = await saveAndEnrich({ sourceType: "link", content: tiktok }, repository(), link => enrichLink(link, { resolve: publicDns, fetcher: async () => json({ code: 10204, message: "not found" }, 404) }));
   assert.equal(deleted.enrichment.reason, "not-found-or-private"); assert.equal(deleted.memory.sourceUrl, tiktok);
   const blocked = await enrichLink(parsePublicLink("https://example.com/post"), { resolve: publicDns, fetcher: async () => html("denied", 403) });
   assert.equal(blocked.reason, "provider-blocked");
@@ -98,17 +106,19 @@ test("SSRF: page redirects to private, metadata or non-HTTPS targets and non-HTM
 test("cross-user isolation: another user's Memory cannot be refreshed, and the same link is a separate Memory per owner", async () => {
   const state = createMemoryTestState(); const a = repository(userA, state); const b = repository(userB, state);
   const offline = async (): Promise<MetadataResult> => ({ status: "unavailable", provider: null, provenance: {} });
-  const owned = await capture({ sourceType: "link", content: tiktok }, a, offline);
+  const owned = await saveAndEnrich({ sourceType: "link", content: tiktok }, a, offline);
   const request = new Request(`http://localhost:3000/api/capture/${owned.memory.id}/details`, { method: "POST", headers: { Origin: "http://localhost:3000" } });
-  const denied = await handleCaptureDetailsRequest(request, owned.memory.id, async () => ({ userId: userB, repository: b }), "http://localhost:3000");
+  const denied = await handleCaptureDetailsRequest(request, owned.memory.id, async () => ({ userId: userB, repository: b, enrichmentWriter: createInMemoryEnrichmentWriter(userB, state) }), "http://localhost:3000");
   assert.equal(denied.status, 404); assert.equal(denied.data, null);
-  assert.notEqual((await capture({ sourceType: "link", content: tiktok }, b, offline)).memory.id, owned.memory.id);
+  // Even if a forged call reached the writer, it re-checks ownership (mirrors the database function).
+  await assert.rejects(createInMemoryEnrichmentWriter(userB, state)(owned.memory.id, { enrichment: "complete" }, "Forged"), /not found/i);
+  assert.notEqual((await saveAndEnrich({ sourceType: "link", content: tiktok }, b, offline)).memory.id, owned.memory.id);
 });
 test("captured caption, creator, hashtags and the user's note are searchable; filler-only queries match nothing", async () => {
   const repo = repository();
-  await capture({ sourceType: "link", content: "https://example.com/cakes/pink-ombre", note: "For Mum's 60th" }, repo, async () => ({ status: "complete", provider: "page-metadata",
+  await saveAndEnrich({ sourceType: "link", content: "https://example.com/cakes/pink-ombre", note: "For Mum's 60th" }, repo, async () => ({ status: "complete", provider: "page-metadata",
     title: "Ombre layer cake", caption: "Pink buttercream ombre cake design with gold leaf. #pinkcake", author: "Cake Studio", hashtags: ["pinkcake"], provenance: { title: "page-metadata", caption: "page-metadata", author: "page-metadata" } }));
-  await capture({ sourceType: "link", content: "https://www.youtube.com/watch?v=rfscVS0vtbw" }, repo, async () => ({ status: "complete", provider: "youtube-oembed",
+  await saveAndEnrich({ sourceType: "link", content: "https://www.youtube.com/watch?v=rfscVS0vtbw" }, repo, async () => ({ status: "complete", provider: "youtube-oembed",
     title: "Learn Python - Full Course for Beginners", author: "freeCodeCamp.org", provenance: { title: "youtube-oembed", author: "youtube-oembed" } }));
   const memories = await repo.searchCandidates(250);
   assert.equal(rankMemories(memories, "That pink cake design I saved", 5).items[0]?.displayTitle, "Ombre layer cake");
@@ -120,20 +130,22 @@ test("captured caption, creator, hashtags and the user's note are searchable; fi
   assert.equal(evidence.link_details?.provider_caption, "Pink buttercream ombre cake design with gold leaf. #pinkcake"); assert.equal(evidence.link_details?.user_note, "For Mum's 60th");
   assert.equal(evidence.stored_note_excerpt, null, "a link's caption is never presented as a stored note or transcript");
 });
-test("details retry persists only an improved placeholder title and never overrides the user's title", async () => {
-  const repo = repository(); const offline = async (): Promise<MetadataResult> => ({ status: "unavailable", provider: null, provenance: {} });
-  const ok = async (): Promise<MetadataResult> => ({ status: "complete", provider: "youtube-oembed", title: "Real title", author: "Channel", provenance: { title: "youtube-oembed" } });
-  const placeholder = await capture({ sourceType: "link", content: "https://youtu.be/rfscVS0vtbw" }, repo, offline); assert.equal(placeholder.memory.title, "YouTube video");
-  const refreshed = await refreshLinkDetails(placeholder.memory.id, repo, ok); assert.deepEqual(refreshed.persisted, ["title"]); assert.equal(refreshed.memory.title, "Real title");
-  const named = await capture({ sourceType: "link", content: "https://example.com/mine", title: "My own name" }, repo, offline);
-  const kept = await refreshLinkDetails(named.memory.id, repo, ok); assert.deepEqual(kept.persisted, []); assert.equal(kept.memory.title, "My own name");
-  const noted = await capture({ sourceType: "link", content: "https://example.com/noted", note: "my words" }, repo, ok);
+test("enrichment persists provider metadata, replaces only a placeholder title and never overrides the user's title or note", async () => {
+  const repo = repository(); const state = createMemoryTestState(); void state; const offline = async (): Promise<MetadataResult> => ({ status: "unavailable", provider: null, provenance: {} });
+  const ok = async (): Promise<MetadataResult> => ({ status: "complete", provider: "youtube-oembed", title: "Real title", author: "Channel", thumbnailUrl: "https://i.ytimg.com/vi/x/hq.jpg", provenance: { title: "youtube-oembed", author: "youtube-oembed", thumbnailUrl: "youtube-oembed" } });
+  const placeholder = await saveAndEnrich({ sourceType: "link", content: "https://youtu.be/rfscVS0vtbw" }, repo, offline); assert.equal(placeholder.memory.title, "YouTube video");
+  const retried = await saveAndEnrich({ sourceType: "link", content: "https://youtu.be/rfscVS0vtbw" }, repo, ok);
+  assert.equal(retried.memory.title, "Real title"); assert.equal(retried.memory.metadata.author, "Channel"); assert.equal(retried.memory.metadata.thumbnailUrl, "https://i.ytimg.com/vi/x/hq.jpg");
+  assert.equal((await repo.read(placeholder.memory.id)).metadata.enrichment, "complete", "metadata is persisted, not just returned");
+  const named = await saveAndEnrich({ sourceType: "link", content: "https://example.com/mine", title: "My own name" }, repo, ok);
+  assert.equal(named.memory.title, "My own name"); assert.equal((named.memory.metadata.provenance as Record<string, string>).title, "user"); assert.equal(named.memory.metadata.author, "Channel");
+  const noted = await saveAndEnrich({ sourceType: "link", content: "https://example.com/noted", note: "my words" }, repo, ok);
   assert.equal(noted.memory.rawText, "my words"); assert.equal((noted.memory.metadata.provenance as Record<string, string>).note, "user");
 });
 test("capture UI: single submission, honest save/detail states, retry, and share prefill without auto-save", async () => {
   const form = await readFile("src/components/capture/capture-form.tsx", "utf8"); const handoff = await readFile("src/components/capture/share-handoff.tsx", "utf8");
   const page = await readFile("src/app/capture/page.tsx", "utf8"); const details = await readFile("src/components/capture/source-details.tsx", "utf8");
-  for (const text of ["if (inFlight.current) return", "Saving…", "Saved · Details ready", "Saved with limited details", "Retry getting details", "Getting details…", "Already saved"]) assert.ok(form.includes(text), text);
+  for (const text of ["if (inFlight.current) return", "Saving…", "Details ready", "Limited details", "Retry getting details", "Getting details…", "Already saved", "void getDetails(saved)", "if (detailsInFlight.current) return"]) assert.ok(form.includes(text), text);
   assert.doesNotMatch(handoff, /fetch\(/, "a signed-out share is never saved automatically"); assert.match(page, /Nothing is saved without the user's tap/);
   for (const text of ["Open original", "No caption or description was available.", "nothing was watched or transcribed", "referrerPolicy=\"no-referrer\""]) assert.ok(details.includes(text), text);
   assert.doesNotMatch(details, /dangerouslySetInnerHTML/);
@@ -141,33 +153,40 @@ test("capture UI: single submission, honest save/detail states, retry, and share
 test("live 12I defects: a repeated share fills a missing note and upgrades a placeholder title, never overwriting the user's words", async () => {
   const repo = repository(); const offline = async (): Promise<MetadataResult> => ({ status: "unavailable", provider: null, provenance: {} });
   const titled = async (): Promise<MetadataResult> => ({ status: "complete", provider: "page-metadata", title: "Birthday cake", provenance: { title: "page-metadata" } });
-  const first = await capture({ sourceType: "link", content: "https://en.wikipedia.org/wiki/Birthday_cake" }, repo, offline); assert.equal(first.memory.title, "en.wikipedia.org");
-  const again = await capture({ sourceType: "link", content: "https://en.wikipedia.org/wiki/Birthday_cake", note: "Ideas for Mum" }, repo, titled);
+  const first = await saveAndEnrich({ sourceType: "link", content: "https://en.wikipedia.org/wiki/Birthday_cake" }, repo, offline); assert.equal(first.memory.title, "en.wikipedia.org");
+  const again = await saveAndEnrich({ sourceType: "link", content: "https://en.wikipedia.org/wiki/Birthday_cake", note: "Ideas for Mum" }, repo, titled);
   assert.equal(again.duplicate, true); assert.equal(again.memory.id, first.memory.id); assert.equal(again.memory.title, "Birthday cake"); assert.equal(again.memory.rawText, "Ideas for Mum");
-  const third = await capture({ sourceType: "link", content: "https://en.wikipedia.org/wiki/Birthday_cake", note: "different words" }, repo, titled);
+  const third = await saveAndEnrich({ sourceType: "link", content: "https://en.wikipedia.org/wiki/Birthday_cake", note: "different words" }, repo, titled);
   assert.equal(third.memory.rawText, "Ideas for Mum", "an existing note is never overwritten");
-  const named = await capture({ sourceType: "link", content: "https://example.com/n", title: "My name" }, repo, offline);
-  assert.equal((await capture({ sourceType: "link", content: "https://example.com/n" }, repo, titled)).memory.title, "My name");
+  const named = await saveAndEnrich({ sourceType: "link", content: "https://example.com/n", title: "My name" }, repo, offline);
+  assert.equal((await saveAndEnrich({ sourceType: "link", content: "https://example.com/n" }, repo, titled)).memory.title, "My name");
   // Pre-12I rows have no provenance; a hostname title is still recognised as a placeholder.
   const legacyState = createMemoryTestState([{ id: "40000000-0000-4000-8000-000000000001", userId: userA, title: "www.instagram.com", sourceType: "link", sourceUrl: "https://www.instagram.com/p/legacy1/",
     rawText: null, analysisStatus: "processing", metadata: { capture: "link" }, createdAt: "2026-10-30T10:00:00.000Z", updatedAt: "2026-10-30T10:00:00.000Z" }]);
-  const legacy = await refreshLinkDetails("40000000-0000-4000-8000-000000000001", repository(userA, legacyState), titled); assert.deepEqual(legacy.persisted, ["title"]);
+  const legacy = await enrichSavedLink("40000000-0000-4000-8000-000000000001", repository(userA, legacyState), createInMemoryEnrichmentWriter(userA, legacyState), titled);
+  assert.equal(legacy.memory.title, "Birthday cake");
   void named;
 });
 test("URL path words are searchable for saved links; opaque IDs are not", async () => {
   const repo = repository(); const offline = async (): Promise<MetadataResult> => ({ status: "unavailable", provider: null, provenance: {} });
-  await capture({ sourceType: "link", content: "https://developer.mozilla.org/en-US/docs/Web/JavaScript" }, repo, offline);
-  await capture({ sourceType: "link", content: "https://www.tiktok.com/@baker.jo/video/7311223344556677889" }, repo, offline);
+  await saveAndEnrich({ sourceType: "link", content: "https://developer.mozilla.org/en-US/docs/Web/JavaScript" }, repo, offline);
+  await saveAndEnrich({ sourceType: "link", content: "https://www.tiktok.com/@baker.jo/video/7311223344556677889" }, repo, offline);
   const memories = await repo.searchCandidates(250);
   assert.equal(rankMemories(memories, "javascript docs", 5).items[0]?.sourceUrl, "https://developer.mozilla.org/en-US/docs/Web/JavaScript");
   assert.equal(rankMemories(memories, "7311223344556677889", 5).state, "no-match");
 });
-test("live 12I defect: a details retry gives providers the longer retry budget, not the 1.5 s save-time limit", async () => {
+test("live 12I defect: enrichment (request 2) gives providers the longer budget, and a later retry completes a timed-out link", async () => {
   const source = await readFile("src/lib/capture/service.ts", "utf8");
-  assert.match(source, /enrich: LinkEnricher = link => enrichLink\(link, \{ timeoutMs: DETAILS_RETRY_BUDGET_MS - 500 \}\)/);
-  let seenTimeout = 0; const repo = repository();
-  const saved = await capture({ sourceType: "link", content: "https://example.com/slow-page" }, repo, async () => ({ status: "timed-out", provider: null, reason: "save-budget-exceeded", provenance: {} }));
-  await refreshLinkDetails(saved.memory.id, repo, async link => { seenTimeout = 4_500; return enrichLink(link, { resolve: publicDns, timeoutMs: 4_500,
-    fetcher: async () => html("<meta property=\"og:title\" content=\"Slow but real\">") }); });
-  assert.equal(seenTimeout, 4_500); assert.equal((await repo.read(saved.memory.id)).title, "Slow but real");
+  assert.match(source, /enrich: LinkEnricher = link => enrichLink\(link, \{ timeoutMs: ENRICHMENT_BUDGET_MS - 1_000 \}\)/);
+  const repo = repository();
+  const saved = await saveAndEnrich({ sourceType: "link", content: "https://example.com/slow-page" }, repo, async () => ({ status: "timed-out", provider: null, reason: "provider-timeout", provenance: {} }));
+  assert.equal(saved.memory.metadata.enrichment, "timed-out");
+  const retry = await saveAndEnrich({ sourceType: "link", content: "https://example.com/slow-page" }, repo, link => enrichLink(link, { resolve: publicDns, timeoutMs: 4_500,
+    fetcher: async () => html("<meta property=\"og:title\" content=\"Slow but real\"><meta property=\"og:description\" content=\"Now stored\">") }));
+  assert.equal(retry.memory.title, "Slow but real"); assert.equal((await repo.read(saved.memory.id)).metadata.caption, "Now stored");
+});
+test("save performs no network work at all (request 1)", async () => {
+  const service = await readFile("src/lib/capture/service.ts", "utf8");
+  const save = service.slice(service.indexOf("export async function capture("), service.indexOf("const ASCII_TAG"));
+  assert.doesNotMatch(save, /enrichLink|enrichSavedLink|fetch\(|withinBudget|enrich\(/);
 });

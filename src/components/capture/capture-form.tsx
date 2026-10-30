@@ -6,9 +6,9 @@ import { RequireAuth } from "@/components/auth/require-auth";
 import { SourceDetails, limitationText } from "@/components/capture/source-details";
 import type { Memory } from "@/lib/memory/contracts";
 
-type Enrichment = { status: "complete" | "partial" | "unavailable" | "unsupported" | "timed-out"; provider: string | null; reason?: string };
+type Enrichment = { status: "complete" | "partial" | "unavailable" | "unsupported" | "timed-out" | "pending"; provider: string | null; reason?: string };
 type CaptureReply = { memory: Memory; duplicate: boolean; enrichment: Enrichment };
-type DetailsReply = { memory: Memory; details: { status: string; reason: string | null; title: string | null; author: string | null; caption: string | null } | null; persisted: string[] };
+type DetailsReply = { memory: Memory; enrichment: Enrichment };
 export type SharedPayload = { url: string; title: string; note: string };
 const PENDING_KEY = "reibry-pending-share";
 
@@ -27,7 +27,7 @@ export function CaptureForm({ shared }: { shared?: SharedPayload | null }) {
   const [kind, setKind] = useState<"text" | "link">(() => (shared ?? readPendingShare())?.url ? "link" : "text"); const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<CaptureReply | null>(null); const [error, setError] = useState("");
   const [details, setDetails] = useState<{ busy: boolean; message: string }>({ busy: false, message: "" });
-  const inFlight = useRef(false); const formRef = useRef<HTMLFormElement>(null);
+  const inFlight = useRef(false); const detailsInFlight = useRef(false); const formRef = useRef<HTMLFormElement>(null);
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); if (inFlight.current) return; inFlight.current = true; setBusy(true); setError(""); setResult(null); setDetails({ busy: false, message: "" });
     const form = new FormData(event.currentTarget); const controller = new AbortController(); const timer = setTimeout(() => controller.abort(), 12_000);
@@ -35,27 +35,28 @@ export function CaptureForm({ shared }: { shared?: SharedPayload | null }) {
       const response = await fetch("/api/capture", { method: "POST", credentials: "same-origin", cache: "no-store", signal: controller.signal,
         headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sourceType: kind, content: form.get("content"), title: form.get("title"), ...(kind === "link" ? { note: form.get("note") } : {}) }) });
       const body = await response.json(); if (!response.ok || !body?.data?.memory) throw new Error(body?.error?.message || "This source could not be saved.");
-      setResult(body.data); formRef.current?.reset(); setInitial(null); clearPendingShare();
+      const saved = body.data as CaptureReply;
+      setResult(saved); formRef.current?.reset(); setInitial(null); clearPendingShare();
+      // Request 2: details are fetched only after the save is acknowledged. If the tab closes, the Memory stays saved and Retry resumes.
+      if (saved.memory.sourceType === "link" && saved.memory.metadata.enrichment !== "complete") void getDetails(saved);
     } catch (cause) { setError(cause instanceof Error && cause.name !== "AbortError" ? cause.message : "Saving took too long. The result is unknown; check Memories before retrying."); }
     finally { clearTimeout(timer); inFlight.current = false; setBusy(false); }
   }
-  async function retryDetails() {
-    if (!result || details.busy) return; setDetails({ busy: true, message: "" });
-    const controller = new AbortController(); const timer = setTimeout(() => controller.abort(), 12_000);
+  async function getDetails(current: CaptureReply) {
+    if (detailsInFlight.current) return; detailsInFlight.current = true; setDetails({ busy: true, message: "" });
+    const controller = new AbortController(); const timer = setTimeout(() => controller.abort(), 15_000);
     try {
-      const response = await fetch(`/api/capture/${result.memory.id}/details`, { method: "POST", credentials: "same-origin", cache: "no-store", signal: controller.signal });
+      const response = await fetch(`/api/capture/${current.memory.id}/details`, { method: "POST", credentials: "same-origin", cache: "no-store", signal: controller.signal });
       const body = await response.json() as { data: DetailsReply | null; error: { message: string } | null }; if (!response.ok || !body.data) throw new Error(body.error?.message || "Details are still unavailable.");
-      const found = body.data.details;
-      setResult({ ...result, memory: body.data.memory });
-      setDetails({ busy: false, message: body.data.persisted.includes("title") ? "Found the title and updated it." : found?.status === "complete" || found?.status === "partial"
-        ? "Details are available now, but REIBRY can only store an improved title until its saved-link details update is enabled."
-        : limitationText(found?.status, found?.reason) ?? "Details are still unavailable." });
+      const reply = body.data;
+      setResult({ ...current, memory: reply.memory, enrichment: reply.enrichment });
+      setDetails({ busy: false, message: reply.enrichment.status === "complete" ? "" : limitationText(reply.enrichment.status, reply.enrichment.reason) ?? "" });
     } catch (cause) { setDetails({ busy: false, message: cause instanceof Error && cause.name !== "AbortError" ? cause.message : "Getting details took too long. The link is still saved." }); }
-    finally { clearTimeout(timer); }
+    finally { clearTimeout(timer); detailsInFlight.current = false; }
   }
   const status = result?.enrichment.status;
-  const headline = !result ? "" : result.duplicate ? "Already saved" : result.memory.sourceType === "text" ? "Saved"
-    : status === "complete" ? "Saved · Details ready" : status === "partial" ? "Saved · Some details ready" : "Saved with limited details";
+  const headline = !result ? "" : result.memory.sourceType === "text" ? (result.duplicate ? "Already saved" : "Saved")
+    : `${result.duplicate ? "Already saved" : "Saved"} · ${details.busy ? "Getting details…" : status === "complete" ? "Details ready" : status === "partial" ? "Some details ready" : status === "pending" ? "Details not fetched yet" : "Limited details"}`;
   return <RequireAuth nextPath="/capture"><Card><form ref={formRef} className="capture-form" onSubmit={submit} aria-describedby="capture-policy" aria-busy={busy}>
     <fieldset className="capture-choice"><legend>What are you saving?</legend>
       <label><input type="radio" name="kind" value="link" checked={kind === "link"} onChange={() => setKind("link")} /> Link</label>
@@ -76,7 +77,7 @@ export function CaptureForm({ shared }: { shared?: SharedPayload | null }) {
   {result && <Card><div className="capture-result" role="status"><p className="eyebrow">{headline}</p>
     <h2>{result.memory.title}</h2>
     {result.memory.sourceType === "link" ? <SourceDetails memory={result.memory} /> : <p className="source-value">Original note preserved</p>}
-    {result.memory.sourceType === "link" && status !== "complete" && <button type="button" className="button btn-ghost" disabled={details.busy} onClick={() => void retryDetails()}>{details.busy ? "Getting details…" : "Retry getting details"}</button>}
+    {result.memory.sourceType === "link" && status !== "complete" && <button type="button" className="button btn-ghost" disabled={details.busy} onClick={() => void getDetails(result)}>{details.busy ? "Getting details…" : "Retry getting details"}</button>}
     {details.message && <p className="field-hint" role="status">{details.message}</p>}
     <Link href={`/memories/${result.memory.id}`} className="button btn-ghost">View saved Memory</Link></div></Card>}
   </RequireAuth>;

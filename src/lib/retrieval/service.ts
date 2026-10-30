@@ -66,7 +66,7 @@ export function rankMemories(memories: Memory[], query: string, limit: number): 
     const matchedSourceMetadata = metadataValues(memory.metadata).filter(value => matchedTerms(value, input.terms).length || normalized(value).includes(input.phrase)).slice(0, 3).map(value => value.slice(0, 200));
     const item: RetrievalItem = { memoryId: memory.id, memoryHref: `/memories#memory-${memory.id}`, displayTitle: memory.title,
       sourceType: memory.sourceType, storedExcerpt: memory.sourceType === "text" ? excerpt(memory.rawText, input.phrase, input.terms) : null,
-      matchedSourceMetadata, sourceUrl: memory.sourceUrl, processingStatus: memory.analysisStatus, match: { reason: reason(fields), score: Math.max(1, score), fields }, sourceDetails: sourceDetails(memory) };
+      matchedSourceMetadata, sourceUrl: memory.sourceUrl, processingStatus: memory.analysisStatus, match: { reason: reason(fields), score: Math.max(1, score), fields }, sourceDetails: sourceDetails(memory), savedAt: memory.createdAt };
     return { item: validateRetrievalItem(item), createdAt: memory.createdAt };
   }).filter((value): value is { item: RetrievalItem; createdAt: string } => value !== null)
     .sort((a, b) => b.item.match.score - a.item.match.score || Date.parse(b.createdAt) - Date.parse(a.createdAt) || a.item.memoryId.localeCompare(b.item.memoryId))
@@ -83,5 +83,5 @@ export function memoryEvidenceItem(memory: Memory): RetrievalItem {
   return validateRetrievalItem({ memoryId: memory.id, memoryHref: `/memories#memory-${memory.id}`, displayTitle: memory.title,
     sourceType: memory.sourceType, storedExcerpt: memory.sourceType === "text" ? excerpt(memory.rawText, "", []) : null,
     matchedSourceMetadata: metadataValues(memory.metadata).slice(0, 3).map(value => value.slice(0, 200)), sourceUrl: memory.sourceUrl,
-    processingStatus: memory.analysisStatus, match: { reason: "Shown earlier in this conversation.", score: 1, fields: ["title"] }, sourceDetails: sourceDetails(memory) });
+    processingStatus: memory.analysisStatus, match: { reason: "Shown earlier in this conversation.", score: 1, fields: ["title"] }, sourceDetails: sourceDetails(memory), savedAt: memory.createdAt });
 }

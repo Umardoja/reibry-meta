@@ -388,3 +388,95 @@ and background upload. That is a separate app project.
 7. In Memories, search for words from the title or your note. In Home, ask
    "What Python tutorial did I save?". This is not yet live-verified after the
    disclosure fix.
+
+## 10. Stage 12I-1: save and enrich are separate, and enrichment is persisted
+
+### Lifecycle
+
+**Request 1 — save (`POST /api/capture`):**
+
+- authenticated validation, canonical identity, owner-scoped dedupe and insert;
+- **no network enrichment** (asserted by a test);
+- links are saved with `metadata.enrichment = "pending"`, a placeholder title (with the TikTok `@creator` from the URL when present) and field provenance.
+
+**Request 2 — enrich (`POST /api/capture/{id}/details`):**
+
+- the browser sends it automatically after the save is acknowledged; the same request powers **Retry getting details**;
+- bounded to 6 s overall, with 5 s per provider;
+- the server verifies the session with `getUser()` and reads the Memory through the owner-bound client;
+- it then persists through the new trusted boundary.
+
+**If the tab closes:** the Memory stays saved with `pending`, and a later Retry completes it. Nothing claims background continuation.
+
+**TikTok share links:** `vm.`/`vt.tiktok.com` and `/t/` links can't be resolved without network. Under save-first they are keyed by their own share identity, and enrichment records the canonical URL and post ID. The same share link deduplicates, but a share link and the canonical post URL can become two Memories. The dedupe key is insert-only.
+
+### Migration `20261030060000_trusted_link_enrichment.sql`
+
+It adds `public.apply_trusted_link_enrichment(p_user_id, p_memory_id, p_details, p_title)`.
+
+**Function properties:**
+
+- `SECURITY DEFINER` with `search_path = ''`;
+- **EXECUTE granted to `service_role` only**, revoked from `PUBLIC`, `anon` and `authenticated`;
+- called by the server with the verified user ID through the server-only client, so clients cannot forge "verified" platform metadata.
+
+**What it enforces:**
+
+- **ownership:** a Memory owned by that user and of type `link`, else `P0002`;
+- **allowlisted keys only:** `enrichment`, `enrichmentReason`, `metadataProvider`, `author`, `authorUrl`, `caption`, `thumbnailUrl`, `publishedAt`, `durationSeconds`, `siteName`, `canonicalUrl`, `postId`, `hashtags`, `provenance`, `enrichedAt`;
+- **validated values:** HTTPS URLs without credentials, lengths, enums, integer duration, valid timestamps, a hashtag pattern, and a provenance allowlist that never accepts `user`;
+- invalid input raises `PT400`, never `40001`.
+
+**What it never changes:**
+
+- `raw_text` (the user's note) is never touched;
+- the title is replaced only while it is REIBRY's placeholder, including pre-12I hostname titles;
+- existing provenance is merged, not overwritten;
+- the call is idempotent.
+
+Owners' direct `UPDATE` grant is unchanged: `title` and `raw_text` only.
+
+**Local verification** (throwaway PostgreSQL with Supabase default grants): all 7 SQL suites passed.
+
+- The 6 existing security suites. `plans_rls` and `ready_packs_rls` were updated to expect the Stage 12F-3 `PT409`; they still expected `40001`.
+- The new `link_enrichment.sql`, which covers:
+  - authenticated and anonymous denial;
+  - placeholder replacement;
+  - idempotency;
+  - the user's title and note preserved;
+  - legacy rows;
+  - cross-user and text-Memory denial;
+  - 15 malicious payloads rejected with no write.
+
+**Hosted:**
+
+- CLI identity was confirmed only after the owner re-logged with the account that owns the project; an earlier session had the wrong account.
+- The dry-run listed exactly this migration; one push applied it.
+- Read-only checks: history has 10 versions; the function is executable only by `service_role` (no `PUBLIC` ACL), `SECURITY DEFINER`, `search_path=""`; `authenticated` can `UPDATE` only `raw_text` and `title`; `anon` can execute 0 functions; 11 tables still have forced RLS.
+
+### Live end-to-end (real dev server, synthetic User A)
+
+Test video: `https://www.youtube.com/watch?v=kqtD5dpn9C8` (tracking parameter added and stripped). It is a public beginner course: "Python for Beginners - Learn Coding with Python in 1 Hour", Programming with Mosh.
+
+| Step | Result |
+| --- | --- |
+| Save | 201 in **933 ms**, `pending`, placeholder "YouTube video" |
+| Enrich | 200 in 3,443 ms (first, uncompiled hit of the route); title, creator and cover persisted with `youtube-oembed` provenance; note kept |
+| Enrich again | 1,130 ms, idempotent |
+| Reload in a fresh session | Title, creator and `enrichment=complete` persisted |
+| `youtu.be/kqtD5dpn9C8?si=…` re-share | Same Memory, with its persisted details |
+| Search "mosh" / "python beginners" / "learn coding" | Rank 1 in each |
+| User B | 404 on read, 404 on enrich, absent from search |
+
+**Browser (390 px):**
+
+- a pending link sends exactly one automatic details request after the save;
+- the UI shows "Getting details…" and then "Already saved · Limited details" with the honest reason;
+- an already-enriched link sends no details request and shows the cover and creator.
+
+### Remaining limitations
+
+- No durable background queue.
+- TikTok captions and covers need the Display API; Instagram needs a Meta app token.
+- Share-link versus canonical-URL duplicates are possible (see above).
+- Pre-12I duplicate rows of the freeCodeCamp test video remain in User A's development data. They are tracked for cleanup, and they visibly affected one conversation answer.

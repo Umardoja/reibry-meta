@@ -1,10 +1,12 @@
 import { AuthFailure, bounded, errorCode as authErrorCode, messages as authMessages } from "../auth/policy.ts";
 import { MemoryRepositoryFailure, type MemoryRepository } from "../memory/repository.ts";
 import { CaptureContractError, parseCaptureInput } from "./contracts.ts";
-import { capture, refreshLinkDetails } from "./service.ts";
+import { capture, enrichSavedLink } from "./service.ts";
+import type { EnrichmentWriter } from "./trusted-enrichment.ts";
 import { memoryId } from "../memory/contracts.ts";
 
-export type CaptureContext = { userId: string; repository: MemoryRepository };
+/** enrichmentWriter is present only on the enrichment route, built after session verification for the verified user. */
+export type CaptureContext = { userId: string; repository: MemoryRepository; enrichmentWriter?: EnrichmentWriter };
 export type CaptureContextFactory = (signal: AbortSignal) => Promise<CaptureContext>;
 type FailureCode = "VALIDATION_ERROR" | "AUTH_REQUIRED" | "AUTH_NOT_CONFIGURED" | "AUTH_TIMEOUT" | "STORAGE_UNAVAILABLE";
 export type CaptureResponse = { status: number; data: unknown; error: { code: FailureCode; message: string } | null };
@@ -51,7 +53,7 @@ export async function handleCaptureRequest(request: Request, factory: CaptureCon
 
 /** User-initiated, bounded metadata retry for one owned link Memory. Body-less same-origin POST. */
 export async function handleCaptureDetailsRequest(request: Request, id: string, factory: CaptureContextFactory,
-  expectedOrigin = new URL(request.url).origin, timeout = 8_000): Promise<CaptureResponse> {
+  expectedOrigin = new URL(request.url).origin, timeout = 10_000): Promise<CaptureResponse> {
   if (request.method !== "POST") return failure("VALIDATION_ERROR", 405);
   if (request.headers.get("origin") !== expectedOrigin || request.headers.get("sec-fetch-site") === "cross-site") return failure("VALIDATION_ERROR", 403);
   try {
@@ -59,10 +61,9 @@ export async function handleCaptureDetailsRequest(request: Request, id: string, 
       let itemId: string; try { itemId = memoryId(id); } catch { throw new CaptureContractError("Use a valid Memory identifier."); }
       const context = await factory(signal);
       if (context.repository.ownerId !== context.userId) throw new AuthFailure("AUTH_REQUIRED");
-      const result = await refreshLinkDetails(itemId, context.repository);
-      return { status: 200, data: { memory: result.memory, details: result.details && { status: result.details.status, reason: result.details.reason ?? null,
-        title: result.details.title ?? null, author: result.details.author ?? null, caption: result.details.caption ?? null, thumbnailUrl: result.details.thumbnailUrl ?? null },
-        persisted: result.persisted }, error: null };
+      if (!context.enrichmentWriter) throw new MemoryRepositoryFailure("STORAGE_UNAVAILABLE");
+      const result = await enrichSavedLink(itemId, context.repository, context.enrichmentWriter);
+      return { status: 200, data: { memory: result.memory, enrichment: result.enrichment }, error: null };
     }, timeout);
   } catch (error) { if (error instanceof MemoryRepositoryFailure && error.code === "NOT_FOUND") return { status: 404, data: null, error: { code: "VALIDATION_ERROR", message: "Memory not found." } }; return failure(mapped(error)); }
 }

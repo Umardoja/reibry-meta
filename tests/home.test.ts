@@ -98,3 +98,20 @@ test("production Home has one provider boundary, no arbitrary tools, Plans, Read
 test("original Home hierarchy and states are restored without technical status text", async () => { const source = await readFile("src/components/home/home-conversation.tsx", "utf8");
   for (const text of ["What are you trying to do", "Tell me what you&apos;re planning", "Find a Memory", "Plan something", "What&apos;s coming up", "Message REIBRY", "New chat", "View Memory", "Save to Life", "ActionProposalReview", "recentHistory", "shownMemoryIds", "const inFlight = useRef", "inFlight.current = true"]) assert.match(source, new RegExp(text));
   assert.match(source, /RequireAuth nextPath="\/"/); assert.doesNotMatch(source, /Completed|Ready Pack|fake|sample Memory|Evidence: |was not called because/); });
+test("Stage 12I-1 diagnostics classify auth rejection vs auth upstream, provider outcome and failing stage without leaking content", async () => {
+  const limiter = createInMemoryAskRateLimiter();
+  const rejected = await handleHomeRequest(request("Find my saved Lagos notes"), async () => { throw new AuthFailure("AUTH_REQUIRED"); }, noProvider, limiter, origin);
+  assert.equal(rejected.status, 401); assert.equal(rejected.diagnostics?.category, "auth-rejected"); assert.equal(rejected.diagnostics?.stage, "auth"); assert.equal(rejected.diagnostics?.providerInvoked, false);
+  const upstream = await handleHomeRequest(request("Find my saved Lagos notes"), async () => { throw new AuthFailure("AUTH_UNAVAILABLE"); }, noProvider, limiter, origin);
+  assert.equal(upstream.status, 503); assert.equal(upstream.diagnostics?.category, "auth-upstream:AUTH_UNAVAILABLE");
+  const value = context(); const broken = { ...value.memoryRepository, async searchCandidates() { throw new (await import("../src/lib/memory/repository.ts")).MemoryRepositoryFailure("STORAGE_UNAVAILABLE"); } };
+  const storage = await run("What did I save about Lagos hotels?", { ...value, memoryRepository: broken }, reasoner());
+  assert.equal(storage.diagnostics?.category, "storage:retrieval:STORAGE_UNAVAILABLE"); assert.equal(storage.diagnostics?.providerInvoked, false);
+  const ok = await run("What did I save about Lagos hotels?", context(), reasoner());
+  assert.equal(ok.diagnostics?.category, null); assert.equal(ok.diagnostics?.providerInvoked, true); assert.equal(ok.diagnostics?.providerOutcome, "valid");
+  assert.deepEqual(ok.diagnostics?.usage, { inputTokens: 20, outputTokens: 12, totalTokens: 32 }); assert.ok(typeof ok.diagnostics?.timingsMs.provider === "number");
+  const failed = await run("What did I save about Lagos hotels?", context(), async () => { throw new MetaClientError("META_INVALID_RESPONSE", "grounding_violation"); });
+  assert.equal(failed.diagnostics?.providerOutcome, "META_INVALID_RESPONSE:grounding_violation"); assert.equal(failed.diagnostics?.providerInvoked, true);
+  assert.match(ok.diagnostics?.requestId ?? "", /^[0-9a-f-]{36}$/);
+  assert.doesNotMatch(JSON.stringify([rejected, upstream, storage, ok, failed].map(item => item.diagnostics)), /Lagos|hotel|aaaaaaaa|20000000/);
+});

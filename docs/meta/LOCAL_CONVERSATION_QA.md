@@ -323,3 +323,34 @@ the fallbacks, and the source-level double-submit guard.
 6. Use **New chat**, then reload. Both clear the context.
 
 Each Muse turn costs about $0.003–0.006 at observed token counts.
+
+## Stage 12I-1: live retrieval of a captured course
+
+**Setup:** the real dev server, the Home API with sanitized diagnostics, and synthetic User A.
+
+**Spend:** 4 Muse calls (the cap), single attempt each, no retries. Measured usage was 1,609/882, 1,894/861, 2,000/871 and 1,796/536 input/output tokens, **$0.02251** in total (ceiling $0.08).
+
+**Latency:** the provider stage took 4.8–6.3 s; auth 227–711 ms; retrieval 213–492 ms. All four requests were HTTP 200 with `providerOutcome: valid`.
+
+| Turn | Reply (sanitized) | Cited | Assessment |
+| --- | --- | --- | --- |
+| "Find that course I saved and tell me what it's about." | Listed the synthetic FastAPI note and the freeCodeCamp course ("going just by the saved title"), and noticed that title was saved 3 times | Note + 3 freeCodeCamp duplicates | **Missed the just-saved Mosh course.** Natural and honest, but answered the wrong item. Cause: the model had no save dates. |
+| "Would this be useful for learning Python?" | Asked which one, listing the Mosh course with the user's note, the freeCodeCamp course and the FastAPI note | Mosh, freeCodeCamp, note | Good clarifying question |
+| "What information do you actually have about the video?" | "I only have what was saved about the link — the saved title…, on YouTube from freeCodeCamp.org. There's no caption and no note from you on it, so I haven't watched it or seen what it covers." | freeCodeCamp | Honest about metadata versus watched content, but about the second item after the ambiguity |
+| "No, I mean the Programming with Mosh one I just saved." | "From the saved title: …1 Hour; From YouTube: … creator Programming with Mosh; You noted: want to try this before the FastAPI course. There's no caption saved… I haven't watched it, so I can't tell you what it covers beyond the title." | Mosh | **Correct, natural and properly attributed** |
+
+**Assessment:**
+
+- No invented transcript, no action claims and no cross-user data.
+- The restored "say what you're going by" instruction was followed in every reply that cited a link.
+- **Recency fix (MOCK-verified only, since the live budget was exhausted).** Retrieval items now carry `saved_at`, and the policy says to lead with the most recently saved match when several fit.
+- Removing the pre-12I duplicate test rows would also make the first answer cleaner.
+
+**Stage 12I 503s.** The two 503s were recorded before diagnostics existed, so their source remains **unclassified**. None occurred in Stage 12I-1. Each Home response now reports:
+
+- `diagnostics.stage`;
+- `category` (`auth-rejected`, `auth-upstream:<code>`, `storage:<stage>:<code>`, `provider:<code>`, `timeout:<stage>` or `unexpected:<stage>:<name>`);
+- `providerInvoked`, `providerOutcome`, token usage and per-stage timings;
+- a request ID, also sent as the `X-Request-Id` header.
+
+None of it includes message text, IDs or secrets.

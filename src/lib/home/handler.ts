@@ -18,7 +18,25 @@ export type HomeContext = { userId: string; memoryRepository: MemoryRepository; 
 export type HomeContextFactory = (signal: AbortSignal) => Promise<HomeContext>;
 type FailureCode = "VALIDATION_ERROR" | "AUTH_REQUIRED" | "AUTH_NOT_CONFIGURED" | "AUTH_TIMEOUT" | "STORAGE_UNAVAILABLE" |
   "AI_NOT_CONFIGURED" | "AI_TIMEOUT" | "AI_ACCESS_DENIED" | "AI_BILLING_REQUIRED" | "AI_RATE_LIMITED" | "AI_UNAVAILABLE" | "AI_INVALID_RESPONSE";
-export type HomeResult = { status: number; data: HomeResponse | null; error: { code: FailureCode; message: string } | null };
+/** Sanitized per-request diagnostics: no message text, Memory content, IDs, cookies or secrets. */
+export type HomeDiagnostics = { requestId: string; stage: string; category: string | null; providerInvoked: boolean; providerOutcome: string | null;
+  usage: { inputTokens: number; outputTokens: number; totalTokens: number } | null; timingsMs: Record<string, number> };
+export type HomeResult = { status: number; data: HomeResponse | null; error: { code: FailureCode; message: string } | null; diagnostics?: HomeDiagnostics };
+class HomeTrace {
+  readonly requestId = globalThis.crypto.randomUUID(); stage = "parse"; providerInvoked = false; providerOutcome: string | null = null;
+  usage: HomeDiagnostics["usage"] = null; private timings: Record<string, number> = {}; private mark = performance.now();
+  enter(stage: string) { const at = performance.now(); this.timings[this.stage] = (this.timings[this.stage] ?? 0) + Math.round(at - this.mark); this.mark = at; this.stage = stage; }
+  report(category: string | null): HomeDiagnostics { const failedAt = this.stage; this.enter(failedAt); return { requestId: this.requestId, stage: failedAt, category,
+    providerInvoked: this.providerInvoked, providerOutcome: this.providerOutcome, usage: this.usage, timingsMs: { ...this.timings } }; }
+}
+/** Distinguishes auth rejection from auth upstream failure, storage, provider and unexpected errors, by stage. */
+function errorCategory(error: unknown, stage: string) {
+  if (error instanceof AuthFailure) return error.code === "AUTH_REQUIRED" ? "auth-rejected" : error.code === "AUTH_TIMEOUT" ? `timeout:${stage}` : `auth-upstream:${error.code}`;
+  if (error instanceof HomeContractError) return "validation";
+  if (error instanceof MetaContractError || error instanceof MetaClientError) return `provider:${error instanceof MetaClientError ? error.code : "contract"}`;
+  if (error instanceof MemoryRepositoryFailure || error instanceof LifeRepositoryFailure || error instanceof ActionRepositoryFailure) return `storage:${stage}:${error.code}`;
+  return `unexpected:${stage}:${error instanceof Error ? error.name : typeof error}`;
+}
 export const homePrivateHeaders = { "Cache-Control": "private, no-store, max-age=0", Vary: "Cookie", "Referrer-Policy": "no-referrer", Pragma: "no-cache" };
 
 const messages: Record<FailureCode, string> = {
@@ -93,9 +111,11 @@ function unavailableLead(code: MetaFailureCode) {
     : "I can't reach Muse Spark right now, so I can't talk this through properly. These saved Memories look related:";
 }
 async function converse(input: HomeRequest, intent: HomeIntent, context: HomeContext, reasoner: ConversationReasoner, limiter: AskRateLimiter,
-  signal: AbortSignal, now: () => Date): Promise<HomeResult> {
+  signal: AbortSignal, now: () => Date, trace: HomeTrace): Promise<HomeResult> {
   const chatty = isSmallTalk(input.message);
+  trace.enter("retrieval");
   const { items, shownEarlier } = chatty ? { items: [] as RetrievalItem[], shownEarlier: new Map<string, number>() } : await conversationEvidence(input, context);
+  trace.enter("life");
   const lifeContexts = chatty ? [] : (await context.lifeRepository.listUpcoming(now().toISOString(), 5))
     .map(item => ({ title: item.title, type: item.type, start_date: item.startDate, status: item.status }));
   const fallback = (code: MetaFailureCode, diagnostic: string | null = null): HomeResult => {
@@ -104,13 +124,17 @@ async function converse(input: HomeRequest, intent: HomeIntent, context: HomeCon
     if (!items.length) return failure(metaFailure(code));
     const data = emptyHomeResponse("MEMORY_SEARCH", unavailableLead(code)); data.memories = items; data.fallbackReason = reason; return { status: 200, data, error: null };
   };
-  if (!limiter.consume(context.userId)) return fallback("META_RATE_LIMIT");
+  trace.enter("provider");
+  if (!limiter.consume(context.userId)) { trace.providerOutcome = "rate-limited-before-call"; return fallback("META_RATE_LIMIT"); }
   let answer;
   try {
+    trace.providerInvoked = true;
     answer = await reasoner({ message: input.message, history: input.history, items, shownEarlier, lifeContexts, timezone: input.timezone,
       today: new Intl.DateTimeFormat("en-GB", { dateStyle: "full", timeStyle: "short", timeZone: input.timezone }).format(now()),
       externalActionRequested: intent === "UNSUPPORTED" }, signal);
-  } catch (error) { if (error instanceof MetaClientError) return fallback(error.code, error.diagnostic); throw error; }
+  } catch (error) { if (error instanceof MetaClientError) { trace.providerOutcome = error.diagnostic ? `${error.code}:${error.diagnostic}` : error.code; return fallback(error.code, error.diagnostic); } throw error; }
+  trace.providerOutcome = "valid"; trace.usage = answer.usage;
+  trace.enter("proposals");
   const inputs = isPlanningRequest(input.message) ? proposalInputs(answer.proposed_next_steps, new Set(items.map(item => item.memoryId))) : [];
   if (inputs.length && !answer.model) throw new ActionRepositoryFailure("INVALID_STATE");
   const persisted = inputs.length ? await context.actionRepository.createProposals(inputs, `meta:${answer.model}`) : [];
@@ -125,16 +149,19 @@ export async function handleHomeRequest(request: Request, factory: HomeContextFa
   expectedOrigin = new URL(request.url).origin, timeout = 25_000, now = () => new Date()): Promise<HomeResult> {
   if (request.method !== "POST") return failure("VALIDATION_ERROR", 405);
   if (request.headers.get("origin") !== expectedOrigin || request.headers.get("sec-fetch-site") === "cross-site") return failure("VALIDATION_ERROR", 403);
-  try { return await bounded(async signal => {
-    const input = parseHomeBody(await readJson(request, signal)); const intent = classifyHomeIntent(input.message, input.timezone, now()); const context = await factory(signal); assertOwner(context);
+  const trace = new HomeTrace();
+  try { const result = await bounded(async signal => {
+    const input = parseHomeBody(await readJson(request, signal)); const intent = classifyHomeIntent(input.message, input.timezone, now());
+    trace.enter("auth"); const context = await factory(signal); assertOwner(context); trace.enter(intent === "LIFE_UPCOMING" || intent === "LIFE_UNDATED" || intent === "LIFE_DRAFT" ? "life" : intent === "ACTION_REVIEW" ? "actions" : "conversation");
     if (input.mode === "confirm-life" && intent !== "LIFE_DRAFT") throw new HomeContractError("Only a Life draft can be confirmed.");
     if (intent === "LIFE_UPCOMING") { const items = filterLife(await context.lifeRepository.listUpcoming(now().toISOString(), 50), input.message); const data = emptyHomeResponse(intent, items.length === 1 ? "Here's what's coming up next." : items.length ? `Here are the next ${items.length} things coming up.` : "Nothing is coming up in Life right now. Tell me about a plan and I'll draft it for you."); data.lifeContexts = items.map(homeLifeItem); return { status: 200, data, error: null }; }
     if (intent === "LIFE_UNDATED") { const items = filterLife(await context.lifeRepository.listUndated(50), input.message); const data = emptyHomeResponse(intent, items.length ? "These still need a date:" : "Everything in Life has a date, so there's nothing to fix."); data.lifeContexts = items.map(homeLifeItem); return { status: 200, data, error: null }; }
     if (intent === "ACTION_REVIEW") { const proposals = (await context.actionRepository.listProposals()).slice(0, HOME_RESULT_MAX).map(proposalView); const data = emptyHomeResponse(intent, proposals.length ? "Here's what's waiting for your review. Nothing is saved until you confirm it." : "There's nothing waiting for your review right now."); data.actionProposals = proposals; return { status: 200, data, error: null }; }
-    if (intent !== "LIFE_DRAFT") return converse(input, intent, context, reasoner, limiter, signal, now);
+    if (intent !== "LIFE_DRAFT") return converse(input, intent, context, reasoner, limiter, signal, now, trace);
     const draft = deterministicLifeContext({ text: input.message, timezone: input.timezone, referenceNow: now() });
     if (!draft.startDate) return { status: 200, data: emptyHomeResponse("CLARIFICATION", "When is it happening? Give me a day and time, like “Saturday at 4pm”, and I'll draft it for you to confirm. I won't guess the date."), error: null };
     if (input.mode === "message") { const data = emptyHomeResponse(intent, "Here's a draft. Check the details and save it if it looks right."); data.lifeDraft = { ...draft, sourceText: input.message, requiresConfirmation: true }; return { status: 200, data, error: null }; }
     const saved = await createLifeFromText(context.lifeRepository, { text: input.message, timezone: input.timezone }, now); const data = emptyHomeResponse(intent, saved.duplicate ? "That's already in Life." : "Saved to Life."); data.savedLife = homeLifeItem(saved.contexts[0]); return { status: saved.duplicate ? 200 : 201, data, error: null };
-  }, timeout); } catch (error) { return failure(mapped(error)); }
+  }, timeout); return { ...result, diagnostics: trace.report(result.error ? `provider:${result.error.code}` : null) }; }
+  catch (error) { return { ...failure(mapped(error)), diagnostics: trace.report(errorCategory(error, trace.stage)) }; }
 }

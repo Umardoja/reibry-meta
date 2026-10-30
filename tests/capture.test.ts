@@ -9,13 +9,14 @@ import { capture } from "../src/lib/capture/service.ts";
 import { parsePublicLink, publicAddress } from "../src/lib/capture/url-policy.ts";
 import { MemoryRepositoryFailure, type MemoryRepository } from "../src/lib/memory/repository.ts";
 import { createInMemoryMemoryRepository, createMemoryTestState } from "./support/in-memory-memory-repository.ts";
+import { createInMemoryEnrichmentWriter, saveAndEnrich, trackedRepository } from "./support/capture-flow.ts";
 
 const origin = "http://localhost:3000";
 const userA = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const userB = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const publicDns = async () => [{ address: "8.8.8.8" }];
 const offline = async () => ({ status: "unavailable" as const, provider: null, reason: "provider-error", provenance: {} });
-function repository(owner = userA) { return createInMemoryMemoryRepository(owner, createMemoryTestState()); }
+function repository(owner = userA) { return trackedRepository(owner); }
 function context(repo: MemoryRepository): CaptureContextFactory { return async () => ({ userId: repo.ownerId, repository: repo }); }
 function request(body: unknown, requestOrigin = origin) { return new Request(origin + "/api/capture", { method: "POST",
   headers: { Origin: requestOrigin, "Content-Type": "application/json" }, body: JSON.stringify(body) }); }
@@ -31,7 +32,7 @@ test("Capture contract accepts bounded note/link input and rejects forged or inv
 });
 
 test("valid notes preserve original text, use deterministic titles and contain no fabricated analysis", async () => {
-  const result = await capture({ sourceType: "text", content: "First line\nSecond line" }, repository());
+  const result = await saveAndEnrich({ sourceType: "text", content: "First line\nSecond line" }, repository());
   assert.equal(result.memory.title, "First line"); assert.equal(result.memory.rawText, "First line\nSecond line");
   assert.equal(result.memory.analysisStatus, "processing"); assert.equal(result.memory.sourceUrl, null);
   assert.equal("summary" in result.memory.metadata, false); assert.equal("analysis" in result.memory.metadata, false);
@@ -55,7 +56,7 @@ test("invalid, non-HTTPS, credentialed, localhost, private and reserved targets 
 });
 
 test("generic links are saved even when the vetted page-metadata fetch fails", async () => {
-  let calls = 0; const result = await capture({ sourceType: "link", content: "https://example.com/article?q=meaningful" }, repository(),
+  let calls = 0; const result = await saveAndEnrich({ sourceType: "link", content: "https://example.com/article?q=meaningful" }, repository(),
     async link => { calls++; return enrichLink(link, { resolve: publicDns, fetcher: async () => { throw new Error("network down"); } }); });
   assert.equal(calls, 1); assert.equal(result.enrichment.status, "unavailable"); assert.equal(result.memory.sourceUrl, "https://example.com/article?q=meaningful");
   assert.equal(result.memory.title, "example.com"); assert.equal(result.memory.metadata.provenance && (result.memory.metadata.provenance as Record<string, string>).title, "reibry-placeholder");
@@ -65,7 +66,7 @@ test("YouTube and TikTok use only fixed oEmbed endpoints and preserve returned s
   for (const [source, expectedHost, provider] of [["https://youtu.be/abc", "www.youtube.com", "youtube-oembed"],
     ["https://www.tiktok.com/@creator/video/1234567890123", "www.tiktok.com", "tiktok-oembed"]] as const) {
     const seen: URL[] = [];
-    const result = await capture({ sourceType: "link", content: source }, repository(), link => enrichLink(link, { resolve: publicDns,
+    const result = await saveAndEnrich({ sourceType: "link", content: source }, repository(), link => enrichLink(link, { resolve: publicDns,
       fetcher: async input => { const endpoint = new URL(input.toString()); seen.push(endpoint); return jsonResponse({ title: "Verified source title", author_name: "Creator", thumbnail_url: "https://cdn.example.com/thumb.jpg" }); } }));
     assert.equal(seen.length, 1); assert.equal(seen[0].hostname, expectedHost); assert.equal(result.enrichment.provider, provider);
     assert.equal(result.memory.title, "Verified source title"); assert.equal(result.memory.metadata.author, "Creator");
@@ -101,7 +102,7 @@ test("metadata DNS and network work have a bounded total timeout", async () => {
 
 test("YouTube/TikTok metadata failures preserve the original link with honest status", async () => {
   for (const source of ["https://youtu.be/abc", "https://www.tiktok.com/@creator/video/1234567890123"]) {
-    const result = await capture({ sourceType: "link", content: source }, repository(), link => enrichLink(link, { resolve: publicDns,
+    const result = await saveAndEnrich({ sourceType: "link", content: source }, repository(), link => enrichLink(link, { resolve: publicDns,
       fetcher: async () => new Response("down", { status: 503 }) }));
     assert.equal(result.memory.sourceUrl, source); assert.equal(result.memory.analysisStatus, "processing");
     assert.equal(result.enrichment.status, "unavailable"); assert.equal(result.memory.metadata.enrichment, "unavailable");
@@ -109,7 +110,7 @@ test("YouTube/TikTok metadata failures preserve the original link with honest st
 });
 
 test("missing optional thumbnail does not downgrade otherwise valid metadata", async () => {
-  const result = await capture({ sourceType: "link", content: "https://youtu.be/no-thumbnail" }, repository(), link => enrichLink(link, {
+  const result = await saveAndEnrich({ sourceType: "link", content: "https://youtu.be/no-thumbnail" }, repository(), link => enrichLink(link, {
     resolve: publicDns, fetcher: async () => jsonResponse({ title: "Title without artwork", author_name: "Creator" }) }));
   assert.equal(result.enrichment.status, "complete"); assert.equal(result.memory.title, "Title without artwork");
   assert.equal("thumbnailUrl" in result.memory.metadata, false);
@@ -117,16 +118,16 @@ test("missing optional thumbnail does not downgrade otherwise valid metadata", a
 
 test("same-owner equivalent links deduplicate atomically, including concurrent requests", async () => {
   const repo = repository(); const source = "https://example.com/path?b=2&a=1";
-  const first = await capture({ sourceType: "link", content: source }, repo, offline); const second = await capture({ sourceType: "link", content: "https://EXAMPLE.com/path?a=1&b=2&utm_campaign=x#x" }, repo, offline);
+  const first = await saveAndEnrich({ sourceType: "link", content: source }, repo, offline); const second = await saveAndEnrich({ sourceType: "link", content: "https://EXAMPLE.com/path?a=1&b=2&utm_campaign=x#x" }, repo, offline);
   assert.equal(first.duplicate, false); assert.equal(second.duplicate, true); assert.equal(second.memory.id, first.memory.id);
-  const results = await Promise.all([capture({ sourceType: "text", content: "Concurrent note" }, repo), capture({ sourceType: "text", content: "Concurrent note" }, repo)]);
+  const results = await Promise.all([saveAndEnrich({ sourceType: "text", content: "Concurrent note" }, repo), saveAndEnrich({ sourceType: "text", content: "Concurrent note" }, repo)]);
   assert.equal(results.filter(item => item.duplicate).length, 1); assert.equal(results[0].memory.id, results[1].memory.id);
 });
 
 test("deduplication is owner scoped and never returns another user's Memory", async () => {
-  const state = createMemoryTestState(); const a = createInMemoryMemoryRepository(userA, state); const b = createInMemoryMemoryRepository(userB, state);
-  const first = await capture({ sourceType: "link", content: "https://example.com/private" }, a, offline);
-  const second = await capture({ sourceType: "link", content: "https://example.com/private" }, b, offline);
+  const state = createMemoryTestState(); const a = trackedRepository(userA, state); const b = trackedRepository(userB, state);
+  const first = await saveAndEnrich({ sourceType: "link", content: "https://example.com/private" }, a, offline);
+  const second = await saveAndEnrich({ sourceType: "link", content: "https://example.com/private" }, b, offline);
   assert.equal(second.duplicate, false); assert.notEqual(second.memory.id, first.memory.id); assert.equal(second.memory.userId, userB);
 });
 

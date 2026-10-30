@@ -28,7 +28,7 @@ do $$ begin
   begin perform * from public.create_owned_plan('Cross owner',null,null,null,array['22222222-2222-4222-8222-222222222222']::uuid[],'66666666-6666-4666-8666-666666666666'); raise exception 'cross-owner Memory Plan succeeded'; exception when foreign_key_violation then null; end;
   begin perform * from public.update_owned_plan((select id from public.plans where title='A travel Plan'),1,null,false,null,false,null,false,null,'44444444-4444-4444-8444-444444444444',true,null); raise exception 'cross-owner Life update succeeded'; exception when foreign_key_violation then null; end;
   if (select version from public.plans where title='A travel Plan')<>1 then raise exception 'failed update was not rolled back'; end if;
-  begin perform * from public.update_owned_plan((select id from public.plans where title='A travel Plan'),2,'stale',true,null,false,null,false,null,null,false,null); raise exception 'stale update succeeded'; exception when serialization_failure then null; end;
+  begin perform * from public.update_owned_plan((select id from public.plans where title='A travel Plan'),2,'stale',true,null,false,null,false,null,null,false,null); raise exception 'stale update succeeded'; exception when sqlstate 'PT409' then null; end;
 end $$;
 reset role;
 set local role authenticated;

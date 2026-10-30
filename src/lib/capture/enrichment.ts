@@ -11,7 +11,7 @@ export type MetadataProvider = "youtube-oembed" | "tiktok-oembed" | "page-metada
 /** Where each stored fact came from. Provider metadata is never presented as watched video, transcript or AI analysis. */
 export type FieldSource = "user" | "url" | "youtube-oembed" | "tiktok-oembed" | "page-metadata" | "reibry-placeholder";
 export type MetadataResult = {
-  status: "complete" | "partial" | "unavailable" | "unsupported" | "timed-out"; provider: MetadataProvider; reason?: string;
+  status: "complete" | "partial" | "unavailable" | "unsupported" | "timed-out" | "pending"; provider: MetadataProvider; reason?: string;
   title?: string; author?: string; authorUrl?: string; caption?: string; thumbnailUrl?: string; publishedAt?: string;
   durationSeconds?: number; siteName?: string; canonicalUrl?: string; hashtags?: string[];
   provenance: Partial<Record<"title" | "author" | "caption" | "thumbnailUrl" | "publishedAt" | "durationSeconds" | "siteName", FieldSource>>;

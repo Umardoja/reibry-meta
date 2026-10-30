@@ -27,7 +27,7 @@ do $$ declare v_pack uuid; begin
   select id into v_pack from public.ready_packs;
   perform * from public.update_owned_ready_pack_checklist(v_pack,'Stay',true,1);
   if not (select reviewed from public.ready_pack_sections where ready_pack_id=v_pack and name='Stay') then raise exception 'checklist persistence failed'; end if;
-  begin perform * from public.update_owned_ready_pack_checklist(v_pack,'Stay',false,1); raise exception 'stale checklist update succeeded'; exception when serialization_failure then null; end;
+  begin perform * from public.update_owned_ready_pack_checklist(v_pack,'Stay',false,1); raise exception 'stale checklist update succeeded'; exception when sqlstate 'PT409' then null; end;
 end $$;
 reset role; set local role authenticated;
 select set_config('request.jwt.claim.sub','bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',true);

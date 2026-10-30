@@ -514,3 +514,27 @@
   - Stage 12I-2 for user-uploaded media understanding.
 - External safety: no schema change, new users, push, deployment, media downloads or scraping of TikTok or Instagram pages.
 - Push status: NOT PUSHED.
+
+## Stage 12I-1 - Persisted social enrichment and live retrieval
+
+- Date: 2026-10-30 (Africa/Lagos).
+- Parent: `6e1d3f8c834aa27e987f9dd1f2873cab9972e469`. Unrelated untracked and ignored files were preserved and not staged.
+- Save-first:
+  - `POST /api/capture` no longer performs any network enrichment;
+  - `POST /api/capture/{id}/details` enriches (6 s bound) and persists through the new trusted boundary;
+  - the browser calls it automatically after the save, and Retry resumes it.
+- Migration: added and applied `20261030060000_trusted_link_enrichment.sql`, a `service_role`-only `SECURITY DEFINER` function with an ownership re-check, allowlisted and validated fields, placeholder-only title replacement, no `raw_text` access, and `PT400`/`P0002` errors.
+  - Local: 7/7 SQL suites. The 12F-3 stale `40001` assertions in `plans_rls` and `ready_packs_rls` were corrected to `PT409`.
+  - Hosted: the dry-run listed exactly this migration and one push applied it, after the owner re-logged with the account that owns the project. Read-only checks confirmed history of 10 versions, a `service_role`-only function, owner `UPDATE` still limited to `title`/`raw_text`, 0 anon-executable functions, and 11 forced-RLS tables.
+- Diagnostics: Home responses carry a sanitized request ID, stage, error category (auth rejection vs auth upstream), provider invocation and outcome, token usage and timings.
+- Live:
+  - save 933 ms;
+  - enrich 3,443 ms on the first hit and 1,130 ms warm;
+  - metadata persisted after reload;
+  - search found the course (rank 1);
+  - User B was isolated;
+  - 15/15 checks.
+- Live Muse: 4 calls, $0.02251, all valid. Turn 1 missed the just-saved course because there were no save dates; a `saved_at` plus recency rule was added, mock-verified only. The correction turn was correct and properly attributed.
+- Browser: 3/3 (automatic details request, honest final state, no extra request when already enriched).
+- Validation: lint PASS; typecheck PASS; 241/241 tests PASS; build PASS; `git diff --check` PASS.
+- Push status: NOT PUSHED.

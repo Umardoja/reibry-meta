@@ -5,20 +5,33 @@ import { authConfig, type AuthEnvironment } from "./config.ts";
 
 export type TrustedSupabaseDependencies = { env: AuthEnvironment & Record<string, string | undefined>; fetch: typeof fetch };
 
+function trustedClient(signal: AbortSignal, dependencies: TrustedSupabaseDependencies, misconfigured: () => Error): SupabaseClient {
+  let url: string; let secret: string;
+  try {
+    url = authConfig(dependencies.env).url;
+    secret = dependencies.env.SUPABASE_SECRET_KEY ?? "";
+    if (!/^sb_secret_[A-Za-z0-9_-]{20,}$/.test(secret)) throw new Error();
+  } catch { throw misconfigured(); }
+  return createClient(url, secret, {
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+    global: { fetch: (input, init) => dependencies.fetch(input, { ...init, signal, cache: "no-store" }) },
+  });
+}
+
 /**
  * Creates an elevated client solely for the trusted proposal RPC. Never use
  * this client for reads or ordinary owner-scoped persistence.
  */
 export function createTrustedProposalClient(signal: AbortSignal,
   dependencies: TrustedSupabaseDependencies = { env: process.env, fetch }): SupabaseClient {
-  let url: string; let secret: string;
-  try {
-    url = authConfig(dependencies.env).url;
-    secret = dependencies.env.SUPABASE_SECRET_KEY ?? "";
-    if (!/^sb_secret_[A-Za-z0-9_-]{20,}$/.test(secret)) throw new Error();
-  } catch { throw new ActionRepositoryFailure("STORAGE_UNAVAILABLE"); }
-  return createClient(url, secret, {
-    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
-    global: { fetch: (input, init) => dependencies.fetch(input, { ...init, signal, cache: "no-store" }) },
-  });
+  return trustedClient(signal, dependencies, () => new ActionRepositoryFailure("STORAGE_UNAVAILABLE"));
+}
+
+/**
+ * Creates an elevated client solely for the trusted link-enrichment RPC, after the caller has verified the
+ * session and read the Memory through the owner-bound client. Never use it for reads or other writes.
+ */
+export function createTrustedEnrichmentClient(signal: AbortSignal,
+  dependencies: TrustedSupabaseDependencies = { env: process.env, fetch }): SupabaseClient {
+  return trustedClient(signal, dependencies, () => new Error("ENRICHMENT_NOT_CONFIGURED"));
 }
