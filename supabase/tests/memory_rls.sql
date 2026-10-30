@@ -8,8 +8,8 @@ insert into auth.users(id) values
 set local role authenticated;
 select set_config('request.jwt.claim.sub', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', true);
 select set_config('request.jwt.claims', '{"sub":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa","role":"authenticated"}', true);
-insert into public.memories(id, user_id, title, source_type, raw_text) values
-  ('11111111-1111-4111-8111-111111111111', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'A', 'text', 'Owned by A');
+insert into public.memories(user_id, title, source_type, raw_text) values
+  ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'A', 'text', 'Owned by A');
 
 do $$
 declare affected integer;
@@ -42,7 +42,7 @@ begin
   if affected <> 0 then raise exception 'Cross-owner DELETE succeeded'; end if;
   begin
     update public.memories set user_id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
-      where id = '11111111-1111-4111-8111-111111111111';
+      where title = 'A';
     raise exception 'Ownership update succeeded';
   exception when insufficient_privilege then null;
   end;

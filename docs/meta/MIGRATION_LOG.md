@@ -269,3 +269,17 @@
 - Documentation: added `READY_PACK_PARITY_RESULTS.md` and `READY_PACK_VERIFICATION.md`; updated README, parity backlog and this log.
 - Commit message: `port(ready-packs): restore original guided planning workflow`.
 - Push status: NOT PUSHED; no remote, Git LFS, hosted migration, provider or external action operation authorized.
+
+## Stage 12A - Migration audit and disposable local verification
+
+- Date: 2026-10-30 (Africa/Lagos).
+- Parent: `ceca795eba13c73bc2359f7a0348ad52ae104a62` on `feat/original-product-parity`; prior commits, the pre-existing `.env.example` edit, and the untracked Stage 1 recovery report were preserved.
+- Audit: reviewed the six-file Memory/Capture/Action/Life/Plan/Ready Pack chain, eleven product tables, RLS policies, grants, security-definer functions, composite ownership foreign keys, indexes, auth configuration boundaries, and all rollback-only SQL plans.
+- Hardening: added five missing reverse foreign-key indexes; bound Ready Pack title/type to the locked owned Plan; enforced one-to-twenty globally unique selections; and made the Plan/Ready Pack two-user SQL plans executable. Memory/Life fixtures now follow their restricted column grants.
+- Local execution: used one isolated, unexposed PostgreSQL 17 Docker container and a local-only Supabase-role/`auth.uid()` compatibility bootstrap. The full chain applied to a fresh database and all five SQL suites passed. Concurrent Ready Pack confirmation returned one stable row/ID; concurrent checklist writes produced one success and one stale-version denial; a forced invalid-reference path rolled back without partial state.
+- Security result: all eleven product tables had forced RLS. Anonymous/cross-user/direct-write violations were denied and same-owner relationships held. Residual blocker: authenticated owners can call the proposal-creation RPC with arbitrary own text/evidence, so owner isolation is verified but model provenance is not cryptographically attested.
+- Verification boundary: PostgreSQL policies, constraints, functions, locks and transactions are locally verified. Supabase Auth, PostgREST, browser sessions, hosted settings and hosted migrations remain **NOT VERIFIED**. Live Meta inference remains **NOT VERIFIED**.
+- Environment: Supabase CLI absent; an unrelated existing local Supabase stack was not touched. The exact disposable container and anonymous volume were removed after verification.
+- Documentation: added `DATABASE_MIGRATION_AUDIT.md` and `LOCAL_SUPABASE_VERIFICATION.md` with the migration graph, findings, residual risks, observed results, and an owner-approved Stage 12B hosted review procedure.
+- Commit message: `test(db): audit migration chain and owner isolation`.
+- Push status: NOT PUSHED; no remote, Git LFS, hosted migration, provider or external action operation authorized.

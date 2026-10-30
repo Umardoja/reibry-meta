@@ -96,7 +96,7 @@ test("confirmation endpoint rejects client bodies and cannot trigger a provider"
 test("SQL migration denies direct writes and defines owner checks, atomic locking and uniqueness", async () => {
   const sql = await readFile(new URL("../supabase/migrations/20261029000000_confirmed_actions.sql", import.meta.url), "utf8");
   for (const pattern of [/enable row level security/i, /force row level security/i, /revoke all on table/i, /auth\.uid\(\)/i,
-    /for update/i, /proposal_id uuid not null unique/i, /security definer/i, /confirm_action_proposal/i]) assert.match(sql, pattern);
+    /for update/i, /proposal_id uuid not null unique/i, /action_proposal_memories_memory_owner_idx/i, /security definer/i, /confirm_action_proposal/i]) assert.match(sql, pattern);
   assert.doesNotMatch(sql, /service_role/i); assert.doesNotMatch(sql, /status\s*=\s*'completed'/i);
 });
 

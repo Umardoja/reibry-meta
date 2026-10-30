@@ -49,6 +49,7 @@ create index action_proposals_owner_created_idx on public.action_proposals (user
 create index action_proposals_owner_status_expiry_idx on public.action_proposals (user_id, status, expires_at);
 create index action_cards_owner_confirmed_idx on public.action_cards (user_id, confirmed_at desc, id desc);
 create index action_proposal_memories_owner_idx on public.action_proposal_memories (user_id, proposal_id);
+create index action_proposal_memories_memory_owner_idx on public.action_proposal_memories (memory_id, user_id);
 
 create function public.set_action_updated_at() returns trigger
 language plpgsql set search_path = '' as $$

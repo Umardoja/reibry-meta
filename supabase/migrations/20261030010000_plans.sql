@@ -30,7 +30,9 @@ create table if not exists public.plan_memories (
 );
 
 create index if not exists plans_owner_status_date_idx on public.plans(user_id, status, start_date, created_at desc);
+create index if not exists plans_life_owner_idx on public.plans(life_context_id, user_id) where life_context_id is not null;
 create index if not exists plan_memories_owner_plan_idx on public.plan_memories(user_id, plan_id);
+create index if not exists plan_memories_memory_owner_idx on public.plan_memories(memory_id, user_id);
 alter table public.plans enable row level security;
 alter table public.plans force row level security;
 alter table public.plan_memories enable row level security;
