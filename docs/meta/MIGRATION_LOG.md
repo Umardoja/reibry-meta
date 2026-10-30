@@ -365,3 +365,25 @@
 - Verification boundary: hosted two-user RLS, Auth journeys, and persistence remain **NOT VERIFIED**. `SUPABASE_SECRET_KEY` remains absent.
 - External safety: no hosted users or rows, no Auth-setting changes, no Meta request, no Git remote or LFS operation, and no original REIBRY modification.
 - Push status: NOT PUSHED.
+
+## Stage 12F-2 - Live Auth, two-user RLS, and persistence verification
+
+- Date: 2026-10-30 (Africa/Lagos).
+- Parent: `ee731c41fe30f908f12709edb76b028c03efc08e` on `feat/original-product-parity`. The pre-existing `.env.example` edit, ignored `.env.local`, and untracked Stage 1 recovery report were preserved.
+- Users: two synthetic Auth users were created through the Auth admin API, with only those two accounts pre-confirmed. Global Auth settings were unchanged. IDs and credentials are kept only in the ignored `.auth/stage12f2/` manifest.
+- Live harness: 177 checks against the production build and the hosted Data API, using real sessions; 169 PASS, 8 FAIL.
+  - Auth, getUser identity, CSRF, cookie attributes, expiry/revocation, and sign-out passed.
+  - Persistence passed for Memory, Capture, Life, Today, Plan, Ready Pack, and Action Card, including re-reads in a fresh session.
+  - Cross-user isolation held in both directions, through the API and through the Data API.
+  - Trusted proposal service-only enforcement passed.
+  - Concurrent idempotency passed.
+- Failures (all fail-closed, no data exposure):
+  - Stale-version conflicts hang in PostgREST because the Plan and Ready Pack RPCs raise SQLSTATE `40001`. This is a release blocker; the fix needs a migration.
+  - Ready Pack routes return 503 instead of 404 for another user's Plan.
+  - A malformed refresh token returns 503 instead of 401.
+- Proposals: two synthetic proposals were created through the trusted server path and labelled synthetic in their title and description. Their database provenance is forced to `meta:muse-spark-1.3` by the RPC. Muse was not called.
+- Browser QA: headless Chrome at 390/430/1440 widths across 11 pages; no horizontal overflow and no cross-user content. Desktop keyboard order and focus rings are present. The mobile-emulation Tab result is inconclusive.
+- Cleanup: not performed, pending approval. The two users cascade-delete all synthetic records.
+- Validation: lint PASS; typecheck PASS; 191/191 tests PASS; build PASS; `git diff --check` PASS. The secret key was found only in one ignored Turbopack cache file.
+- External safety: no Meta request, migration, Auth-setting change, Git remote or LFS operation, deployment, or original REIBRY modification.
+- Push status: NOT PUSHED.
