@@ -5,6 +5,7 @@ import { MemoryRepositoryFailure, type MemoryRepository } from "../memory/reposi
 import { deterministicTitle, type CaptureInput } from "./contracts.ts";
 import { enrichLink, type FieldSource, type MetadataResult } from "./enrichment.ts";
 import type { EnrichmentWriter } from "./trusted-enrichment.ts";
+import { cleanSharedText } from "./share.ts";
 import { parsePublicLink, type ParsedCaptureUrl } from "./url-policy.ts";
 
 /** Request 2 (enrichment) budget. Request 1 (save) performs no network metadata work at all. */
@@ -64,8 +65,12 @@ export async function capture(input: CaptureInput, repository: MemoryRepository)
     const earlier = await repository.findLinkByPostId("tiktok", link.postId);
     if (earlier) { const memory = await improveDuplicate(earlier, repository, link, input); return { memory, duplicate: true, enrichment: { status: enrichmentState(memory), provider: null } }; }
   }
+  // Words the share sheet sent with the link are cleaned again here (the client is not trusted) and labelled by their real source.
+  const sharedText = input.sharedText ? cleanSharedText(input.sharedText) : "";
   const metadata: Record<string, JsonValue> = { capture: "link", platform: link.platform, normalizedUrl: link.normalized, format: link.format, enrichment: "pending",
-    metadataProvider: null, provenance: { title: input.title ? "user" : "reibry-placeholder", ...(link.creatorHandle ? { author: "url" } : {}), ...(input.note ? { note: "user" } : {}) } };
+    metadataProvider: null, provenance: { title: input.title ? "user" : "reibry-placeholder", ...(link.creatorHandle ? { author: "url" } : {}), ...(input.note ? { note: "user" } : {}),
+      ...(sharedText ? { sharedText: "share-sheet" } : {}) } };
+  if (sharedText) metadata.sharedText = sharedText;
   if (link.postId) metadata.postId = link.postId;
   if (link.creatorHandle) metadata.author = link.creatorHandle;
   // analysis_status describes AI analysis, which capture does not perform; provider metadata state lives in metadata.enrichment.

@@ -30,7 +30,7 @@ export type ModelEvidence = {
   /** 1-based position in the previous assistant turn when the user is referring back to it ("the second one"). */
   shown_earlier_position: number | null;
   /** Link Memories only: creator and caption as supplied by the platform/page (not watched or transcribed), and the user's own note. */
-  link_details: { platform: string | null; creator_from_provider: string | null; provider_caption: string | null; user_note: string | null } | null;
+  link_details: { platform: string | null; creator_from_provider: string | null; provider_caption: string | null; shared_with_link: string | null; user_note: string | null } | null;
   saved_at: string | null;
   /** Video Memories only, with each claim's source labelled. VIDEO_VISUAL: Muse Spark video analysis; VIDEO_TRANSCRIPT: Muse Voice Transcribe;
    * AI_INTERPRETATION: inferences; USER_NOTE: the user's own text; PROVIDER_METADATA: platform data (none for user uploads). */
@@ -133,7 +133,7 @@ export function toModelEvidence(items: RetrievalItem[], shownEarlier: ReadonlyMa
       match_reason: item.match.reason.slice(0, 180),
       shown_earlier_position: shownEarlier.get(item.memoryId) ?? null,
       link_details: item.sourceType === "link" && item.sourceDetails ? { platform: item.sourceDetails.platform, creator_from_provider: item.sourceDetails.creator,
-        provider_caption: item.sourceDetails.caption, user_note: item.sourceDetails.userNote } : null,
+        provider_caption: item.sourceDetails.caption, shared_with_link: item.sourceDetails.sharedWithLink ?? null, user_note: item.sourceDetails.userNote } : null,
       saved_at: item.savedAt ?? null,
       video_evidence: item.sourceType === "video" ? { analysis: item.video?.analyzed ? "analyzed" as const : "not-analyzed-yet" as const,
         VIDEO_VISUAL: item.video?.visual ?? [], VIDEO_TRANSCRIPT: (item.video?.transcript ?? []).map(turn => ({ at: `${turn.startSeconds}–${turn.endSeconds} s`, text: turn.text })),

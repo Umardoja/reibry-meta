@@ -11,7 +11,7 @@ const reasons: Record<string, string> = {
   "provider-blocked": "The site blocked automated previews.",
   "instagram-requires-meta-app-token": "Instagram doesn't share post details without an approved Meta app, so only the link is saved.",
   "share-link-unresolved": "The share link couldn't be opened to find the original post.",
-  "provider-returned-no-title": "TikTok confirmed the video exists but didn't share its caption or cover.",
+  "provider-returned-no-title": "Saved. REIBRY couldn't retrieve this video's description or cover.",
   "unsafe-destination": "This link points somewhere REIBRY won't fetch.",
   "not-a-web-page": "This link isn't a web page, so there was nothing to preview.",
   "no-page-metadata": "The page doesn't publish preview details.",
@@ -36,7 +36,7 @@ export function SourceDetails({ memory }: { memory: Memory }) {
     {thumbnail && !imageFailed && <img className="source-thumb" src={thumbnail} alt={`Cover image supplied by ${platform}`} loading="lazy" referrerPolicy="no-referrer" onError={() => setImageFailed(true)} />}
     <div className="source-meta">
       <p className="source-line"><strong>{platform}</strong>{creator && <> · {creator}</>}{site && platform === "Web" && <> · {site}</>}</p>
-      {caption ? <p className="source-caption">{caption}</p> : <p className="field-hint">No caption or description was available.</p>}
+      {caption ? <p className="source-caption">{caption}</p> : <p className="field-hint">REIBRY couldn&apos;t retrieve a description.</p>}
       {memory.rawText && <p className="source-note"><span className="field-hint">Your note:</span> {memory.rawText}</p>}
       <p className="field-hint">Saved {new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(new Date(memory.createdAt))}. Details come from the {platform === "Web" ? "page" : platform} link only; nothing was watched or transcribed.</p>
       {limitation && <p className="field-hint">{limitation}</p>}

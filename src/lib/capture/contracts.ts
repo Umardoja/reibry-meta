@@ -6,7 +6,8 @@ export const CAPTURE_TITLE_MAX = 200;
 
 export const CAPTURE_NOTE_MAX = 5_000;
 /** note: the user's own words about a shared link. It is stored as user-provenance raw_text and never replaced by provider metadata. */
-export type CaptureInput = { sourceType: "text" | "link"; content: string; title?: string; note?: string };
+/** sharedText: words a share sheet sent with the link (Stage 12K). Stored separately as "Shared with the link", never as the note. */
+export type CaptureInput = { sourceType: "text" | "link"; content: string; title?: string; note?: string; sharedText?: string };
 export class CaptureContractError extends Error {}
 
 function object(value: unknown): Record<string, unknown> {
@@ -19,13 +20,15 @@ function text(value: unknown, label: string, max: number) {
 }
 export function parseCaptureInput(value: unknown): CaptureInput {
   const input = object(value);
-  if (Object.keys(input).some(key => !["sourceType", "content", "title", "note"].includes(key))) throw new CaptureContractError("Unsupported Capture field.");
+  if (Object.keys(input).some(key => !["sourceType", "content", "title", "note", "sharedText"].includes(key))) throw new CaptureContractError("Unsupported Capture field.");
   if (input.sourceType !== "text" && input.sourceType !== "link") throw new CaptureContractError("Choose a note or public HTTPS link.");
   const content = text(input.content, input.sourceType === "text" ? "Note" : "Link", input.sourceType === "text" ? CAPTURE_TEXT_MAX : CAPTURE_URL_MAX);
   const title = input.title === undefined || input.title === "" ? undefined : text(input.title, "Title", CAPTURE_TITLE_MAX);
   if (input.note !== undefined && input.note !== "" && input.sourceType !== "link") throw new CaptureContractError("A separate note applies to links only.");
   const note = input.note === undefined || input.note === "" ? undefined : text(input.note, "Note", CAPTURE_NOTE_MAX);
-  return { sourceType: input.sourceType, content, ...(title ? { title } : {}), ...(note ? { note } : {}) };
+  if (input.sharedText !== undefined && input.sharedText !== "" && input.sourceType !== "link") throw new CaptureContractError("Shared text applies to links only.");
+  const sharedText = input.sharedText === undefined || input.sharedText === "" ? undefined : text(input.sharedText, "Shared text", CAPTURE_NOTE_MAX);
+  return { sourceType: input.sourceType, content, ...(title ? { title } : {}), ...(note ? { note } : {}), ...(sharedText ? { sharedText } : {}) };
 }
 
 export function deterministicTitle(value: string) {

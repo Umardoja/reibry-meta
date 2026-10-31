@@ -8,7 +8,7 @@ import { IC } from "@/components/design/icons";
 import { KindGlyph, MemoryCover } from "@/components/memory/memory-visual";
 import type { Memory } from "@/lib/memory/contracts";
 import { presentMemory, type MemoryKind } from "@/lib/memory/presentation";
-import { parseSharedPayload, readShareArrival, type ShareArrival, type SharedPayload } from "@/lib/capture/share";
+import { cleanSharedText, parseSharedPayload, readShareArrival, type ShareArrival, type SharedPayload } from "@/lib/capture/share";
 
 type Enrichment = { status: "complete" | "partial" | "unavailable" | "unsupported" | "timed-out" | "pending"; provider: string | null; reason?: string };
 type CaptureReply = { memory: Memory; duplicate: boolean; enrichment: Enrichment };
@@ -29,7 +29,9 @@ const noArrival: ShareArrival = { arrived: false, fromShortcut: false, payload: 
 function readArrival(): ShareArrival { return typeof window === "undefined" ? noArrival : readShareArrival(window.location.search, window.location.hash); }
 const platformOf = (url: string): MemoryKind => /tiktok\.com/i.test(url) ? "tiktok" : /youtube\.com|youtu\.be/i.test(url) ? "youtube" : /instagram\.com/i.test(url) ? "instagram" : "web";
 const platformName: Record<MemoryKind, string> = { tiktok: "TikTok", youtube: "YouTube", instagram: "Instagram", web: "Web", note: "Note", video: "Video" };
-const prefill = (payload: SharedPayload | null) => payload ? [payload.url, payload.note].filter(Boolean).join("\n") : "";
+// Stage 12K: a share's link goes in the box; the words that came with it are kept apart as "Shared with the link", not as the user's note.
+const prefill = (payload: SharedPayload | null) => payload?.url ?? "";
+const sharedWords = (payload: SharedPayload | null) => payload?.note ? cleanSharedText(payload.note) : "";
 
 export function CaptureForm({ shared }: { shared?: SharedPayload | null }) {
   // Prefill order: server-read query share, a share kept through sign-in, then a #fragment share.
@@ -37,6 +39,7 @@ export function CaptureForm({ shared }: { shared?: SharedPayload | null }) {
   const [initial, setInitial] = useState<SharedPayload | null>(() => shared ?? readPendingShare() ?? readArrival().payload);
   const [content, setContent] = useState(() => prefill(initial));
   const [title, setTitle] = useState(() => initial?.title ?? "");
+  const [sharedText, setSharedText] = useState(() => sharedWords(initial));
   const [forceNote, setForceNote] = useState(false);
   const [busy, setBusy] = useState(false); const [error, setError] = useState("");
   const [result, setResult] = useState<CaptureReply | null>(null);
@@ -51,7 +54,7 @@ export function CaptureForm({ shared }: { shared?: SharedPayload | null }) {
     function onHash() {
       const next = readShareArrival("", window.location.hash); if (!next.arrived) return;
       setArrival(next); setResult(null); setError(""); setForceNote(false);
-      if (next.payload) { setInitial(next.payload); setContent(prefill(next.payload)); setTitle(next.payload.title); }
+      if (next.payload) { setInitial(next.payload); setContent(prefill(next.payload)); setTitle(next.payload.title); setSharedText(sharedWords(next.payload)); }
       window.history.replaceState(window.history.state, "", "/capture");
     }
     window.addEventListener("hashchange", onHash);
@@ -65,6 +68,8 @@ export function CaptureForm({ shared }: { shared?: SharedPayload | null }) {
     if (!forceNote && found && trimmed.length - found.url.length <= 600) return { kind: "link" as const, url: found.url, note: found.note, platform: platformOf(found.url) };
     return { kind: "note" as const, linkPresent: !!found };
   }, [content, forceNote]);
+  // Shared words belong only to the link they arrived with.
+  const sharedWithLink = detected?.kind === "link" && sharedText && detected.url === initial?.url ? sharedText : "";
 
   async function paste() {
     try { const text = (await navigator.clipboard.readText()).trim(); if (!text) { setError("Your clipboard is empty. Copy a link first."); return; }
@@ -76,7 +81,8 @@ export function CaptureForm({ shared }: { shared?: SharedPayload | null }) {
     event.preventDefault(); if (!detected) return; if (inFlight.current) return; inFlight.current = true; setBusy(true); setError(""); setResult(null); setDetails({ busy: false, message: "" });
     const note = String(new FormData(event.currentTarget).get("note") ?? "").trim();
     const body = detected.kind === "link"
-      ? { sourceType: "link", content: detected.url, ...(title.trim() ? { title: title.trim() } : {}), ...([detected.note, note].filter(Boolean).length ? { note: [detected.note, note].filter(Boolean).join("\n") } : {}) }
+      ? { sourceType: "link", content: detected.url, ...(title.trim() ? { title: title.trim() } : {}), ...([detected.note, note].filter(Boolean).length ? { note: [detected.note, note].filter(Boolean).join("\n") } : {}),
+        ...(sharedWithLink ? { sharedText: sharedWithLink } : {}) }
       : { sourceType: "text", content: content.trim(), ...(title.trim() ? { title: title.trim() } : {}) };
     const controller = new AbortController(); const timer = setTimeout(() => controller.abort(), 12_000);
     try {
@@ -84,7 +90,7 @@ export function CaptureForm({ shared }: { shared?: SharedPayload | null }) {
         headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       const reply = await response.json(); if (!response.ok || !reply?.data?.memory) throw new Error(reply?.error?.message || "This couldn't be saved. Check the link and try again.");
       const saved = reply.data as CaptureReply;
-      setResult(saved); setContent(""); setTitle(""); setInitial(null); setArrival(noArrival); clearPendingShare();
+      setResult(saved); setContent(""); setTitle(""); setSharedText(""); setInitial(null); setArrival(noArrival); clearPendingShare();
       // Request 2: details are fetched only after the save is acknowledged. If the tab closes, the Memory stays saved and Retry resumes.
       if (saved.memory.sourceType === "link" && saved.memory.metadata.enrichment !== "complete") void getDetails(saved);
     } catch (cause) { setError(cause instanceof Error && cause.name !== "AbortError" ? cause.message : "Saving took too long. Check Memories before trying again — it may already be saved."); }
@@ -125,6 +131,8 @@ export function CaptureForm({ shared }: { shared?: SharedPayload | null }) {
         {detected?.kind === "note" && <><KindGlyph kind="note" /><span>Saved as a note, exactly as written.</span>
           {forceNote && <button type="button" className="chip" onClick={() => setForceNote(false)}>Save the link instead</button>}</>}
       </div>
+      {sharedWithLink && <p className="field-hint shared-with-link"><strong>Shared with the link:</strong> {sharedWithLink.length > 160 ? `${sharedWithLink.slice(0, 159)}…` : sharedWithLink}{" "}
+        <button type="button" className="chip" onClick={() => setSharedText("")}>Don&apos;t keep</button></p>}
       <details className="capture-extras" open={initial?.title ? true : undefined}>
         <summary>Add a title or note</summary>
         <div className="field"><label htmlFor="capture-title">Title <span className="optional">(optional)</span></label>

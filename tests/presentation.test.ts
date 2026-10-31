@@ -14,7 +14,8 @@ test("a TikTok saved before details arrived: honest generic title, creator from 
   const view = presentMemory(base({ title: "TikTok video by @baker.jo", metadata: { capture: "link", platform: "tiktok", enrichment: "partial", enrichmentReason: "provider-returned-no-title", author: "@baker.jo", provenance: { title: "reibry-placeholder", author: "url" } } }), now);
   assert.equal(view.title, "Saved TikTok video"); assert.equal(view.titleIsGeneric, true); assert.equal(view.creator, "@baker.jo");
   assert.equal(view.summary, null, "no description from a URL alone"); assert.equal(view.thumbnail, null); assert.equal(view.kind, "tiktok"); assert.equal(view.openLabel, "Open on TikTok");
-  assert.equal(view.details.state, "limited"); assert.match(view.details.message ?? "", /didn't share its caption or cover/);
+  assert.equal(view.details.state, "limited"); assert.equal(view.details.message, "Saved. REIBRY couldn't retrieve this video's description or cover.");
+  assert.doesNotMatch(view.details.message ?? "", /confirmed|didn't share/, "never implies the video itself has no caption");
   assert.ok(view.unknown.some(item => /hasn't watched/.test(item)), "says the video itself was not watched");
   assert.doesNotMatch(JSON.stringify({ ...view, originalUrl: null }), engineering);
 });

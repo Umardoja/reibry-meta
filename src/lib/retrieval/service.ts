@@ -16,7 +16,7 @@ export function normalizeQuery(value: string) {
 function normalized(value: string) { return value.normalize("NFKC").toLocaleLowerCase("en").replace(/[^\p{L}\p{N}]+/gu, " ").replace(/\s+/g, " ").trim(); }
 // Captured provider/page metadata (creator, caption, hashtags, site) is searchable alongside the title and the user's own note.
 function metadataValues(metadata: Record<string, JsonValue>) { return [metadata.author, metadata.platform, metadata.metadataProvider, metadata.siteName,
-  metadata.caption, Array.isArray(metadata.hashtags) ? metadata.hashtags.filter(tag => typeof tag === "string").map(tag => `#${tag}`).join(" ") : null]
+  metadata.caption, metadata.sharedText, Array.isArray(metadata.hashtags) ? metadata.hashtags.filter(tag => typeof tag === "string").map(tag => `#${tag}`).join(" ") : null]
   .filter((value): value is string => typeof value === "string" && !!value.trim()); }
 function text(value: JsonValue | undefined, max: number) { return typeof value === "string" && value.trim() ? value.trim().slice(0, max) : null; }
 // Searchable text of an analysed video: what Muse Spark saw (scenes, on-screen text, observations) and what Voice Transcribe heard.
@@ -39,9 +39,10 @@ function videoEvidence(memory: Memory): RetrievalVideoEvidence | null {
     interpretations: (visual?.interpretations ?? []).slice(0, 3).map(item => short(`${item.claim} (based on ${item.basedOn})`, 200)), gaps: (visual?.gaps ?? []).slice(0, 4).map(item => short(item, 160)) };
 }
 function sourceDetails(memory: Memory): RetrievalItem["sourceDetails"] {
-  if (memory.sourceType === "video") return { platform: null, creator: null, caption: null, userNote: memory.rawText ? memory.rawText.trim().slice(0, 280) : null };
+  if (memory.sourceType === "video") return { platform: null, creator: null, caption: null, sharedWithLink: null, userNote: memory.rawText ? memory.rawText.trim().slice(0, 280) : null };
   if (memory.sourceType !== "link") return null;
-  return { platform: text(memory.metadata.platform, 40), creator: text(memory.metadata.author, 120), caption: text(memory.metadata.caption, 280), userNote: memory.rawText ? memory.rawText.trim().slice(0, 280) : null };
+  return { platform: text(memory.metadata.platform, 40), creator: text(memory.metadata.author, 120), caption: text(memory.metadata.caption, 280),
+    sharedWithLink: text(memory.metadata.sharedText, 280), userNote: memory.rawText ? memory.rawText.trim().slice(0, 280) : null };
 }
 function metadataText(metadata: Record<string, JsonValue>) { return metadataValues(metadata).join(" "); }
 function hostOnly(sourceUrl: string | null) { try { return sourceUrl ? new URL(sourceUrl).hostname.replace(/^www\./, "") : ""; } catch { return ""; } }

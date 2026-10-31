@@ -28,7 +28,8 @@ const detailReasons: Record<string, string> = {
   "provider-blocked": "This site doesn't allow previews.",
   "instagram-requires-meta-app-token": "Instagram doesn't share post details with apps like REIBRY yet, so only the link is saved.",
   "share-link-unresolved": "This share link didn't lead to a specific post, so only the link is saved.",
-  "provider-returned-no-title": "TikTok confirmed the video but didn't share its caption or cover.",
+  // TikTok's oEmbed confirmed the post but returned no title or cover; that says nothing about whether the video itself has a caption.
+  "provider-returned-no-title": "Saved. REIBRY couldn't retrieve this video's description or cover.",
   "unsafe-destination": "REIBRY doesn't open this kind of link, so only the link is saved.",
   "not-a-web-page": "This link isn't a web page, so there was nothing to preview.",
   "no-page-metadata": "The page doesn't publish a preview.",
@@ -84,10 +85,12 @@ export function presentMemory(memory: Memory, now = new Date()): MemoryView {
   const generic = isGenericTitle(memory);
   const creator = kind === "note" ? null : text(memory.metadata.author);
   const caption = text(memory.metadata.caption);
+  const sharedText = memory.sourceType === "link" ? text(memory.metadata.sharedText) : null;
   const userNote = memory.sourceType === "text" ? null : text(memory.rawText);
   const video = memory.video ?? null; const analysed = !!(video?.status === "ready" && video.visual);
   let summary: MemoryView["summary"] = null;
   if (caption) summary = { text: clamp(caption, 220), from: `From ${platformName}` };
+  else if (sharedText) summary = { text: clamp(sharedText, 220), from: "Shared with the link" };
   else if (analysed && video?.visual?.observations[0]) summary = { text: clamp(video.visual.observations.slice(0, 2).join(". "), 220), from: "From REIBRY's look at your video" };
   else if (memory.sourceType === "text" && memory.rawText) {
     const body = memory.rawText.trim(); const rest = body.startsWith(memory.title) ? body.slice(memory.title.length).trim() : body;
@@ -107,6 +110,7 @@ export function presentMemory(memory: Memory, now = new Date()): MemoryView {
     const fromPlatform = [!generic && !isUserTitle(memory) ? `Title: ${memory.title}` : null, creator ? `Creator: ${creator}` : null, caption ? `Caption: ${clamp(caption, 400)}` : null,
       safeThumbnail(memory.metadata.thumbnailUrl) ? "A cover image" : null].filter((item): item is string => !!item);
     if (fromPlatform.length) knows.push({ heading: `Shared by ${platformName}`, items: fromPlatform });
+    if (sharedText) knows.push({ heading: "Shared with the link", items: [clamp(sharedText, 400)] });
   }
   if (isUserTitle(memory) || userNote || memory.sourceType === "text") knows.push({ heading: "From you", items: [isUserTitle(memory) || memory.sourceType === "text" ? `Title: ${memory.title}` : null,
     userNote ? `Your note: ${clamp(userNote, 400)}` : null, memory.sourceType === "text" && memory.rawText ? `Your note: ${clamp(memory.rawText, 400)}` : null].filter((item): item is string => !!item) });
