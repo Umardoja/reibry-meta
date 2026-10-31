@@ -106,6 +106,6 @@ test("Action UI labels confirmed records as saved planning artifacts, never exec
     readFile(new URL("../src/components/actions/action-proposal-review.tsx", import.meta.url), "utf8"),
     readFile(new URL("../src/components/actions/action-library.tsx", import.meta.url), "utf8"),
   ]);
-  assert.match(ask, /ActionProposalReview/); assert.match(review, /Review action/); assert.match(review, /Save action/); assert.match(review, /planning artifact/i);
+  assert.match(ask, /ActionProposalReview/); assert.match(review, /Review action/); assert.match(review, /Save action/); assert.match(review, /won(?:'|&apos;)t do anything outside the app/i); assert.match(review, /hasn(?:'|&apos;)t done anything outside the app/i);
   assert.match(library, /Not executed/); assert.doesNotMatch(`${ask}\n${review}\n${library}`, />Completed</);
 });

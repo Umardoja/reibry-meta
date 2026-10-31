@@ -1,11 +1,14 @@
 "use client";
-import { useEffect, useRef, useState, type FormEvent } from "react";
+// Stage 12J-3 Capture: one obvious action. Paste or share a link (or write a note), tap Save, get back to life.
+// Request 1 saves immediately; request 2 fetches whatever details the platform shares. Nothing is ever saved without the user's tap.
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import Link from "next/link";
-import { Card } from "@/components/ui/primitives";
 import { RequireAuth } from "@/components/auth/require-auth";
-import { SourceDetails, limitationText } from "@/components/capture/source-details";
+import { IC } from "@/components/design/icons";
+import { KindGlyph, MemoryCover } from "@/components/memory/memory-visual";
 import type { Memory } from "@/lib/memory/contracts";
-import { parseSharedFragment, type SharedPayload } from "@/lib/capture/share";
+import { presentMemory, type MemoryKind } from "@/lib/memory/presentation";
+import { parseSharedPayload, readShareArrival, type ShareArrival, type SharedPayload } from "@/lib/capture/share";
 
 type Enrichment = { status: "complete" | "partial" | "unavailable" | "unsupported" | "timed-out" | "pending"; provider: string | null; reason?: string };
 type CaptureReply = { memory: Memory; duplicate: boolean; enrichment: Enrichment };
@@ -19,32 +22,72 @@ export function readPendingShare(): SharedPayload | null {
   try { const raw = sessionStorage.getItem(PENDING_KEY); if (!raw) return null;
     const value = JSON.parse(raw) as SharedPayload & { at: number }; return Date.now() - value.at < 3_600_000 ? { url: value.url, title: value.title, note: value.note } : null; } catch { return null; }
 }
-function readFragmentShare(): SharedPayload | null { return typeof window === "undefined" ? null : parseSharedFragment(window.location.hash); }
 function clearPendingShare() { try { sessionStorage.removeItem(PENDING_KEY); } catch { /* storage unavailable */ } }
 export function storePendingShare(payload: SharedPayload) { try { sessionStorage.setItem(PENDING_KEY, JSON.stringify({ ...payload, at: Date.now() })); } catch { /* storage unavailable */ } }
+const noArrival: ShareArrival = { arrived: false, fromShortcut: false, payload: null, received: "" };
+// The #fragment is read with parseSharedFragment (via readShareArrival) on arrival; the server never sees it.
+function readArrival(): ShareArrival { return typeof window === "undefined" ? noArrival : readShareArrival(window.location.search, window.location.hash); }
+const platformOf = (url: string): MemoryKind => /tiktok\.com/i.test(url) ? "tiktok" : /youtube\.com|youtu\.be/i.test(url) ? "youtube" : /instagram\.com/i.test(url) ? "instagram" : "web";
+const platformName: Record<MemoryKind, string> = { tiktok: "TikTok", youtube: "YouTube", instagram: "Instagram", web: "Web", note: "Note", video: "Video" };
+const prefill = (payload: SharedPayload | null) => payload ? [payload.url, payload.note].filter(Boolean).join("\n") : "";
 
 export function CaptureForm({ shared }: { shared?: SharedPayload | null }) {
-  // A signed-out share stored by ShareHandoff prefills the form after sign-in; reading is non-destructive (cleared only once saved).
-  // An Apple Shortcut may hand the link over in the #fragment (never sent to the server). Prefill only; the user still taps Save.
-  const [initial, setInitial] = useState<SharedPayload | null>(() => shared ?? readPendingShare() ?? readFragmentShare());
-  const [kind, setKind] = useState<"text" | "link">(() => (shared ?? readPendingShare() ?? readFragmentShare())?.url ? "link" : "text"); const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState<CaptureReply | null>(null); const [error, setError] = useState("");
+  // Prefill order: server-read query share, a share kept through sign-in, then a #fragment share.
+  const [arrival, setArrival] = useState<ShareArrival>(() => readArrival());
+  const [initial, setInitial] = useState<SharedPayload | null>(() => shared ?? readPendingShare() ?? readArrival().payload);
+  const [content, setContent] = useState(() => prefill(initial));
+  const [title, setTitle] = useState(() => initial?.title ?? "");
+  const [forceNote, setForceNote] = useState(false);
+  const [busy, setBusy] = useState(false); const [error, setError] = useState("");
+  const [result, setResult] = useState<CaptureReply | null>(null);
   const [details, setDetails] = useState<{ busy: boolean; message: string }>({ busy: false, message: "" });
-  const inFlight = useRef(false); const detailsInFlight = useRef(false); const formRef = useRef<HTMLFormElement>(null);
-  // Once the shared link is in the form, remove it from the address bar and history.
-  useEffect(() => { if (window.location.search || window.location.hash) window.history.replaceState(null, "", "/capture"); }, []);
+  const [canPaste] = useState(() => typeof navigator !== "undefined" && !!navigator.clipboard?.readText);
+  const inFlight = useRef(false); const detailsInFlight = useRef(false); const fieldRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    // Once the shared link is in the form, remove it from the address bar and history (keeping Next's own history state).
+    if (window.location.search || window.location.hash) window.history.replaceState(window.history.state, "", "/capture");
+    // Safari can reuse an open REIBRY tab for a new share: then only the #fragment changes and the page does not reload.
+    function onHash() {
+      const next = readShareArrival("", window.location.hash); if (!next.arrived) return;
+      setArrival(next); setResult(null); setError(""); setForceNote(false);
+      if (next.payload) { setInitial(next.payload); setContent(prefill(next.payload)); setTitle(next.payload.title); }
+      window.history.replaceState(window.history.state, "", "/capture");
+    }
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, []);
+
+  // A link (optionally with words around it, as share sheets send) is saved as a link; anything else as a note.
+  const detected = useMemo(() => {
+    const trimmed = content.trim(); if (!trimmed) return null;
+    const found = parseSharedPayload(name => name === "text" ? trimmed : null);
+    if (!forceNote && found && trimmed.length - found.url.length <= 600) return { kind: "link" as const, url: found.url, note: found.note, platform: platformOf(found.url) };
+    return { kind: "note" as const, linkPresent: !!found };
+  }, [content, forceNote]);
+
+  async function paste() {
+    try { const text = (await navigator.clipboard.readText()).trim(); if (!text) { setError("Your clipboard is empty. Copy a link first."); return; }
+      setContent(text); setForceNote(false); setError(""); fieldRef.current?.focus(); }
+    catch { setError("REIBRY couldn't read the clipboard. Long-press the box and choose Paste instead."); }
+  }
+
   async function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); if (inFlight.current) return; inFlight.current = true; setBusy(true); setError(""); setResult(null); setDetails({ busy: false, message: "" });
-    const form = new FormData(event.currentTarget); const controller = new AbortController(); const timer = setTimeout(() => controller.abort(), 12_000);
+    event.preventDefault(); if (!detected) return; if (inFlight.current) return; inFlight.current = true; setBusy(true); setError(""); setResult(null); setDetails({ busy: false, message: "" });
+    const note = String(new FormData(event.currentTarget).get("note") ?? "").trim();
+    const body = detected.kind === "link"
+      ? { sourceType: "link", content: detected.url, ...(title.trim() ? { title: title.trim() } : {}), ...([detected.note, note].filter(Boolean).length ? { note: [detected.note, note].filter(Boolean).join("\n") } : {}) }
+      : { sourceType: "text", content: content.trim(), ...(title.trim() ? { title: title.trim() } : {}) };
+    const controller = new AbortController(); const timer = setTimeout(() => controller.abort(), 12_000);
     try {
       const response = await fetch("/api/capture", { method: "POST", credentials: "same-origin", cache: "no-store", signal: controller.signal,
-        headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sourceType: kind, content: form.get("content"), title: form.get("title"), ...(kind === "link" ? { note: form.get("note") } : {}) }) });
-      const body = await response.json(); if (!response.ok || !body?.data?.memory) throw new Error(body?.error?.message || "This source could not be saved.");
-      const saved = body.data as CaptureReply;
-      setResult(saved); formRef.current?.reset(); setInitial(null); clearPendingShare();
+        headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const reply = await response.json(); if (!response.ok || !reply?.data?.memory) throw new Error(reply?.error?.message || "This couldn't be saved. Check the link and try again.");
+      const saved = reply.data as CaptureReply;
+      setResult(saved); setContent(""); setTitle(""); setInitial(null); setArrival(noArrival); clearPendingShare();
       // Request 2: details are fetched only after the save is acknowledged. If the tab closes, the Memory stays saved and Retry resumes.
       if (saved.memory.sourceType === "link" && saved.memory.metadata.enrichment !== "complete") void getDetails(saved);
-    } catch (cause) { setError(cause instanceof Error && cause.name !== "AbortError" ? cause.message : "Saving took too long. The result is unknown; check Memories before retrying."); }
+    } catch (cause) { setError(cause instanceof Error && cause.name !== "AbortError" ? cause.message : "Saving took too long. Check Memories before trying again — it may already be saved."); }
     finally { clearTimeout(timer); inFlight.current = false; setBusy(false); }
   }
   async function getDetails(current: CaptureReply) {
@@ -55,36 +98,59 @@ export function CaptureForm({ shared }: { shared?: SharedPayload | null }) {
       const body = await response.json() as { data: DetailsReply | null; error: { message: string } | null }; if (!response.ok || !body.data) throw new Error(body.error?.message || "Details are still unavailable.");
       const reply = body.data;
       setResult({ ...current, memory: reply.memory, enrichment: reply.enrichment, duplicate: current.duplicate || !!reply.merged });
-      setDetails({ busy: false, message: reply.merged ? "This is the same TikTok post you saved before, so REIBRY kept your earlier Memory and added anything new to it."
-        : reply.enrichment.status === "complete" ? "" : limitationText(reply.enrichment.status, reply.enrichment.reason) ?? "" });
-    } catch (cause) { setDetails({ busy: false, message: cause instanceof Error && cause.name !== "AbortError" ? cause.message : "Getting details took too long. The link is still saved." }); }
+      setDetails({ busy: false, message: reply.merged ? "You'd already saved this TikTok, so REIBRY kept your earlier Memory and added anything new to it." : "" });
+    } catch (cause) { setDetails({ busy: false, message: cause instanceof Error && cause.name !== "AbortError" ? cause.message : "Getting details took too long. Your link is still saved." }); }
     finally { clearTimeout(timer); detailsInFlight.current = false; }
   }
-  const status = result?.enrichment.status;
-  const headline = !result ? "" : result.memory.sourceType === "text" ? (result.duplicate ? "Already saved" : "Saved")
-    : `${result.duplicate ? "Already saved" : "Saved"} · ${details.busy ? "Getting details…" : status === "complete" ? "Details ready" : status === "partial" ? "Some details ready" : status === "pending" ? "Details not fetched yet" : "Limited details"}`;
-  return <RequireAuth nextPath="/capture"><Card><form ref={formRef} className="capture-form" onSubmit={submit} aria-describedby="capture-policy" aria-busy={busy}>
-    <fieldset className="capture-choice"><legend>What are you saving?</legend>
-      <label><input type="radio" name="kind" value="link" checked={kind === "link"} onChange={() => setKind("link")} /> Link</label>
-      <label><input type="radio" name="kind" value="text" checked={kind === "text"} onChange={() => setKind("text")} /> Note</label>
-    </fieldset>
-    <div className="field"><label htmlFor="capture-content">{kind === "text" ? "Note" : "Link"}</label>
-      {kind === "text" ? <textarea className="input capture-textarea" id="capture-content" name="content" maxLength={50000} required placeholder="Paste or write the original note" />
-        : <input key={initial?.url ?? "link"} className="input" id="capture-content" name="content" type="url" inputMode="url" autoComplete="off" autoCapitalize="none" spellCheck={false}
-          maxLength={2048} required defaultValue={initial?.url ?? ""} placeholder="Paste a TikTok, YouTube, Instagram or web link" />}
-      <p className="field-hint" id="capture-policy">{kind === "link" ? "The link is saved right away. REIBRY then adds any details the platform shares, like the title, creator and cover." : "Your note is saved exactly as written."}</p></div>
-    {kind === "link" && <div className="field"><label htmlFor="capture-note">Why are you saving this? <span className="optional">(optional)</span></label>
-      <textarea key={initial?.note ?? "note"} className="input" id="capture-note" name="note" rows={2} maxLength={5000} defaultValue={initial?.note ?? ""} placeholder="e.g. Pink cake idea for Mum's birthday" /></div>}
-    <div className="field"><label htmlFor="capture-title">Title <span className="optional">(optional)</span></label>
-      <input key={initial?.title ?? "title"} className="input" id="capture-title" name="title" maxLength={200} defaultValue={initial?.title ?? ""} placeholder="Use the source title when available" /></div>
-    <button className="button btn-primary" type="submit" disabled={busy}>{busy ? "Saving…" : "Save Memory"}</button>
-  </form></Card>
-  {error && <p className="auth-error" role="alert">{error}</p>}
-  {result && <Card><div className="capture-result" role="status"><p className="eyebrow">{headline}</p>
-    <h2>{result.memory.title}</h2>
-    {result.memory.sourceType === "link" ? <SourceDetails memory={result.memory} /> : <p className="source-value">Original note preserved</p>}
-    {result.memory.sourceType === "link" && status !== "complete" && <button type="button" className="button btn-ghost" disabled={details.busy} onClick={() => void getDetails(result)}>{details.busy ? "Getting details…" : "Retry getting details"}</button>}
-    {details.message && <p className="field-hint" role="status">{details.message}</p>}
-    <Link href={`/memories/${result.memory.id}`} className="button btn-ghost">View saved Memory</Link></div></Card>}
+  function another() { setResult(null); setDetails({ busy: false, message: "" }); setTimeout(() => fieldRef.current?.focus(), 0); }
+
+  const view = result ? presentMemory(result.memory) : null;
+  const detailState = !view || view.details.state === "none" ? null : details.busy ? "Getting details…" : view.details.state === "ready" ? "Details ready" : view.details.state === "pending" ? "Details not fetched yet" : "Limited details";
+  const shareProblem = arrival.arrived && !arrival.payload && !content.trim() && !result;
+  return <RequireAuth nextPath="/capture">
+    {shareProblem && <section className="notice" role="status" aria-live="polite">
+      <h2>{arrival.fromShortcut ? "Your Shortcut opened REIBRY, but no link came with it" : "Something was shared, but no link came with it"}</h2>
+      <p>Nothing has been saved. In the app you were using, choose Share → Copy link, then tap Paste.</p>
+      <div className="inline-actions">{canPaste && <button type="button" className="btn-soft" onClick={() => void paste()}>{IC.paste}Paste link</button>}</div>
+      {arrival.received && <details><summary>What arrived</summary><code>{arrival.received}</code></details>}
+    </section>}
+    {!result && <form className="capture-box" onSubmit={submit} aria-busy={busy}>
+      <label htmlFor="capture-content" className="sr-only">Paste a link or write a note</label>
+      <textarea ref={fieldRef} id="capture-content" name="content" value={content} onChange={event => { setContent(event.target.value); setError(""); }} maxLength={50_000}
+        placeholder="Paste a link or write a note…" spellCheck aria-describedby="capture-detected" required />
+      <div className="capture-detected" id="capture-detected" aria-live="polite">
+        {!detected && <span>Links from TikTok, YouTube, Instagram and the web, or any note.</span>}
+        {detected?.kind === "link" && <><KindGlyph kind={detected.platform} /><span><strong>{platformName[detected.platform]} link</strong>{detected.note ? " · the words around it become your note" : ""}</span>
+          {detected.note && <button type="button" className="chip" onClick={() => setForceNote(true)}>Save as a note instead</button>}</>}
+        {detected?.kind === "note" && <><KindGlyph kind="note" /><span>Saved as a note, exactly as written.</span>
+          {forceNote && <button type="button" className="chip" onClick={() => setForceNote(false)}>Save the link instead</button>}</>}
+      </div>
+      <details className="capture-extras" open={initial?.title ? true : undefined}>
+        <summary>Add a title or note</summary>
+        <div className="field"><label htmlFor="capture-title">Title <span className="optional">(optional)</span></label>
+          <input className="input" id="capture-title" name="title" maxLength={200} value={title} onChange={event => setTitle(event.target.value)} placeholder="e.g. Birthday cake idea" /></div>
+        {detected?.kind !== "note" && <div className="field"><label htmlFor="capture-note">Why are you saving this? <span className="optional">(optional)</span></label>
+          <textarea className="input" id="capture-note" name="note" rows={2} maxLength={5000} placeholder="e.g. Pink cake for Mum's birthday" /></div>}
+      </details>
+      <div className="capture-submit">
+        {canPaste && <button type="button" className="button btn-ghost" onClick={() => void paste()} aria-label="Paste from clipboard">{IC.paste}<span>Paste</span></button>}
+        <button className="button btn-primary" type="submit" disabled={busy || !detected}>{busy ? "Saving…" : "Save to REIBRY"}</button>
+      </div>
+    </form>}
+    {error && <p className="auth-error" role="alert">{error}</p>}
+    {result && view && <section className="saved-card capture-result" role="status" aria-live="polite">
+      <div className="saved-headline"><span className="saved-check">{IC.check}</span>
+        <div><h2 className="eyebrow-like">{result.duplicate ? "Already saved" : "Saved"}</h2><p>{result.duplicate ? "It was already in your Memories." : "It's in your Memories. Get back to what you were doing."}</p></div></div>
+      <Link href={view.href} className="saved-preview"><MemoryCover view={view} size="thumb" excerpt={view.kind === "note" ? result.memory.rawText : null} />
+        <span className="memory-card-body"><span className="memory-card-title">{view.title}</span>
+          <span className="memory-card-meta">{[view.kindLabel, view.creator].filter(Boolean).join(" · ")}</span></span></Link>
+      {detailState && <p className="details-line eyebrow-status">{details.busy && <span className="spinner" aria-hidden="true" />}{detailState}{!details.busy && view.details.message ? ` — ${view.details.message}` : ""}</p>}
+      {details.message && <p className="field-hint" role="status">{details.message}</p>}
+      <div className="inline-actions">
+        {view.details.state !== "none" && view.details.state !== "ready" && <button type="button" className="button btn-ghost" disabled={details.busy} onClick={() => void getDetails(result)}>{details.busy ? "Getting details…" : "Retry getting details"}</button>}
+        <Link href={view.href} className="button btn-ghost">View Memory</Link>
+        <button type="button" className="button btn-primary" onClick={another}>Save another</button>
+      </div>
+    </section>}
   </RequireAuth>;
 }

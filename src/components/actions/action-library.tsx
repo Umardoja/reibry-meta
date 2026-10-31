@@ -21,7 +21,7 @@ export function ActionLibrary() {
     {view.state === "ready" && view.items.length === 0 && <Card><h2>No saved Action Cards</h2><p>Ask REIBRY for grounded next steps, review one, then explicitly save it.</p></Card>}
     {view.state === "ready" && view.items.length > 0 && <ul className="action-card-list" aria-label="Confirmed Action Cards">{view.items.map(action =>
       <li key={action.id} id={`action-${action.id}`}><Card><div className="action-card-heading"><h2>{action.title}</h2><span className="edition-pill">confirmed</span></div>
-        <p>{action.description}</p><p className="field-hint">Saved {new Date(action.confirmedAt).toLocaleDateString()} · Planning artifact only · Not executed</p>
+        <p>{action.description}</p><p className="field-hint">Saved {new Date(action.confirmedAt).toLocaleDateString()} · Yours to do · Not executed</p>
         <h3>Supporting Memories</h3><ul>{action.memoryHrefs.map((href, index) => <li key={href}><a href={href}>Open supporting Memory {index + 1}</a></li>)}</ul>
       </Card></li>)}</ul>}
   </RequireAuth>;

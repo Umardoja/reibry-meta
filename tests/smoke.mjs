@@ -135,9 +135,13 @@ test("production app serves the restored REIBRY shell and its stylesheet", async
     const memoryPage = await fetch(origin + "/memories", { redirect: "manual" });
     assert.equal(memoryPage.status, 307);
     assert.match(memoryPage.headers.get("location"), /\/auth\?next=/);
+    // Stage 12J-1: a signed-out /capture reaches the page so a #url= share (invisible to the server) survives sign-in.
+    // The page shows only the sign-in handoff: no form, no data.
     const capturePage = await fetch(origin + "/capture", { redirect: "manual" });
-    assert.equal(capturePage.status, 307);
-    assert.match(capturePage.headers.get("location"), /\/auth\?next=/);
+    assert.equal(capturePage.status, 200);
+    const captureHtml = await capturePage.text();
+    assert.match(captureHtml, /Sign in to capture/);
+    assert.doesNotMatch(captureHtml, /id="capture-content"|Save to REIBRY/);
     const askPage = await fetch(origin + "/ask", { redirect: "manual" });
     assert.equal(askPage.status, 307);
     assert.match(askPage.headers.get("location"), /\/auth\?next=/);

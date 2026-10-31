@@ -21,7 +21,7 @@ function TodayCard({ item, hero }: { item: TodayResurfacedMemory; hero: boolean 
     <span className="why-now-pill">Why now</span><Link className="life-pill" href={item.lifeContext.href}>{item.lifeContext.title}</Link>
     <h2 className={hero ? "hero-title" : "compact-title"}><Link href={item.memoryHref}>{item.displayTitle}</Link></h2>
     {item.storedExcerpt ? <p className={hero ? "hero-desc" : "compact-desc"}>{item.storedExcerpt}</p> :
-      <p className={hero ? "hero-desc" : "compact-desc"}>Metadata-only saved link. REIBRY has not read a webpage or video transcript.</p>}
+      <p className={hero ? "hero-desc" : "compact-desc"}>A saved link — REIBRY hasn&apos;t watched or read it.</p>}
     <div className="why-box"><h3 className="why-box-title">Why this came back</h3><p className="why-box-text">{item.reason}</p></div>
   </div></article>;
 }
@@ -44,12 +44,12 @@ export function TodayWorkspace() {
     {view.state === "error" && <div className="px"><StatePanel tone="error">{view.message}<button className="button btn-ghost" type="button" onClick={() => window.location.reload()}>Try again</button></StatePanel></div>}
     {view.state === "ready" && view.data && <>
       <section className="resurfaced-list" aria-label="Resurfaced for you">
-        {!view.data.resurfacedMemories.length ? <StatePanel>No resurfaced Memories yet. Save something and add a dated Life event — REIBRY will only connect them when stored evidence supports the match.</StatePanel> :
+        {!view.data.resurfacedMemories.length ? <StatePanel>No resurfaced Memories yet. Save things you find and add dates to Life — REIBRY will bring back what matters, when it matters.</StatePanel> :
           view.data.resurfacedMemories.map((item, index) => <TodayCard key={`${item.memoryId}-${item.lifeContext.id}`} item={item} hero={index === 0} />)}
       </section>
       {view.data.upcomingLifeContexts.length > 0 ? <section className="today-secondary"><div className="results-header"><h2 className="section-heading">Upcoming Life</h2><Link href="/life">View Life</Link></div>
         <div className="today-life-list">{view.data.upcomingLifeContexts.map(context => <CompactLifeRow key={context.id} context={context} />)}</div></section> :
-        <section className="today-secondary"><StatePanel>No upcoming Life contexts. <Link href="/life">Add what matters next</Link>.</StatePanel></section>}
+        <section className="today-secondary"><StatePanel>Nothing dated is coming up yet. <Link href="/life">Add what&apos;s coming up</Link> and REIBRY will help you prepare.</StatePanel></section>}
     </>}
   </RequireAuth>;
 }

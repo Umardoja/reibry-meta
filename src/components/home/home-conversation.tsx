@@ -30,14 +30,14 @@ function shownMemoryIds(turns: Turn[]) {
 
 function EvidenceList({ response }: { response: HomeResponse }) {
   const items = response.groundedAnswer?.citations.map(item => ({ id: item.memory_id, href: item.memory_href, title: item.title,
-    excerpt: item.evidence_limit === "metadata-only-link" ? "Metadata-only saved link. No webpage or transcript content was used."
-      : item.evidence_limit === "analyzed-video" ? "Your video, analysed: visuals by Muse Spark, speech by Muse Voice Transcribe."
+    excerpt: item.evidence_limit === "metadata-only-link" ? "A saved link — REIBRY knows only what was saved with it, not what's in the video or page."
+      : item.evidence_limit === "analyzed-video" ? "Your video — from REIBRY's analysis of what it shows and says."
       : item.evidence_limit === "video-not-analyzed" ? "Saved video, not analysed yet: only its title and your note were used." : null,
-    reason: item.evidence_limit === "metadata-only-link" ? "metadata only" : item.evidence_limit === "analyzed-video" ? "analysed video" : "stored evidence" })) ?? response.memories.map(item => ({ id: item.memoryId, href: item.memoryHref,
-      title: item.displayTitle, excerpt: item.storedExcerpt, reason: `${item.match.reason}${item.sourceType === "link" ? " Link evidence is metadata only." : ""}` }));
+    reason: item.evidence_limit === "metadata-only-link" ? "Saved link" : item.evidence_limit === "analyzed-video" ? "Your video" : "Your note" })) ?? response.memories.map(item => ({ id: item.memoryId, href: item.memoryHref,
+      title: item.displayTitle, excerpt: item.storedExcerpt, reason: item.sourceType === "link" ? "A saved link — only what was saved with it" : item.sourceType === "video" ? "Your video" : "Your note" }));
   if (!items.length) return null;
   return <div className="home-option-list">{items.map(item => <article className="home-option" key={item.id}><span className="home-option-copy"><strong>{item.title}</strong>
-    <small>{item.excerpt || item.reason}</small></span><span className="home-option-actions"><Link className="home-action-chip" href={item.href}>View Memory</Link></span></article>)}</div>;
+    <small>{item.excerpt || item.reason}</small></span><span className="home-option-actions"><Link className="home-action-chip" href={`/memories/${item.id}`}>View Memory</Link></span></article>)}</div>;
 }
 
 function LifeList({ response }: { response: HomeResponse }) {

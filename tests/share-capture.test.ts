@@ -40,7 +40,9 @@ test("Capture page: prefill only, no referrer, link stripped from the address ba
   assert.match(page, /referrer: "no-referrer"/); assert.doesNotMatch(page, /capture\(|fetch\(/, "visiting the page never saves");
   assert.match(handoff, /parseSharedFragment\(window\.location\.hash\)/); assert.match(handoff, /storePendingShare\(payload\)/);
   assert.match(handoff, /replaceState\(null, "", "\/capture"\)/); assert.match(handoff, /router\.replace\("\/auth\?next=\/capture"\)/);
-  assert.match(form, /parseSharedFragment\(window\.location\.hash\)/); assert.match(form, /replaceState\(null, "", "\/capture"\)/);
+  // The form reads the #fragment (readShareArrival -> parseSharedFragment) and strips it, keeping Next's own history state.
+  assert.match(form, /readShareArrival\(window\.location\.search, window\.location\.hash\)/); assert.match(form, /replaceState\(window\.history\.state, "", "\/capture"\)/);
+  assert.match(form, /addEventListener\("hashchange"/, "a share into an already-open tab (fragment-only change) is still read");
   assert.match(form, /if \(inFlight\.current\) return; inFlight\.current = true/, "a double click cannot submit twice");
 });
 

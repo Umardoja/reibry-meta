@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { verifiedPageUser } from "@/lib/auth/server";
 import { parseSharedPayload } from "@/lib/capture/share";
+import { experimentalVideoUploadEnabled } from "@/lib/video/flags";
 import { CaptureForm } from "@/components/capture/capture-form";
 import { ShareHandoff } from "@/components/capture/share-handoff";
 import { VideoCapture } from "@/components/video/video-capture";
@@ -16,6 +17,15 @@ export default async function CapturePage({ searchParams }: { searchParams: Prom
   let verified = false; try { verified = !!await verifiedPageUser(); } catch { /* Fail closed. */ }
   // Signed out: keep any shared link (query or fragment) in this tab only, then sign in and come back to a prefilled form.
   if (!verified) return <Container><ShareHandoff shared={shared} /></Container>;
-  return <Container><header className="section-heading"><p className="eyebrow">Capture</p><h1>Save a thought, link, or plan.</h1>
-    <p>Share or paste a link and get back to what you were doing. REIBRY saves it first, then adds whatever details the platform shares.</p></header><CaptureForm shared={shared} /><VideoCapture /></Container>;
+  return <Container><div className="capture-page">
+    <header className="page-hero"><p className="eyebrow">Capture</p><h1>Save it before you forget it.</h1>
+      <p>A video, a recipe, a place, an idea. Paste the link or jot it down — REIBRY keeps it, so you can get back to what you were doing.</p></header>
+    <CaptureForm shared={shared} />
+    <section className="capture-tips" aria-labelledby="capture-tips-heading"><h2 id="capture-tips-heading">Saving from other apps</h2>
+      <ol><li>In TikTok, YouTube or Instagram, tap <strong>Share → Copy link</strong>, come back here and tap <strong>Paste</strong>.</li>
+        <li>On iPhone, add the <strong>Save to REIBRY</strong> Shortcut once, then choose it from the Share menu.</li>
+        <li>REIBRY saves the link first, then adds any title, creator and cover the platform shares. It never watches the video for you unless you say so.</li></ol></section>
+    {/* Experimental: manual video upload is off for the consumer product (owner decision, Stage 12J-3). */}
+    {experimentalVideoUploadEnabled() && <VideoCapture />}
+  </div></Container>;
 }

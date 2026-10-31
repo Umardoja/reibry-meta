@@ -35,7 +35,7 @@ export function AuthForm({ next, configured, notice }: { next: string | null; co
   }
   return <section className="auth-wrap" aria-labelledby="auth-heading">
     <div className="auth-logo-ring"><BrandMark /></div><h1 id="auth-heading" className="auth-brand">REIBRY</h1>
-    <p className="auth-tagline">From Saved to Done<br />Secure account access for Meta Edition.</p>
+    <p className="auth-tagline">From Saved to Done<br />Your personal memory for the useful things you find.</p>
     {!configured && <p role="status" className="auth-notice">{messages.AUTH_NOT_CONFIGURED}</p>}
     {notice && <p role="status" className="auth-notice">{notice}</p>}
     {(session.state.status === "authenticated" || session.state.error === "AUTH_REQUIRED") && <div className="auth-notice">{session.state.status === "authenticated" ? <><p>Your session is verified.</p><Link href={safeNext(next) || "/account"}>Continue to account</Link></> : <p>Account access is locked while signing out.</p>}<SignOutButton /></div>}
@@ -53,7 +53,7 @@ export function AuthForm({ next, configured, notice }: { next: string | null; co
       {busy && <p role="status">Working… This request is limited to 12 seconds.</p>}
       <Button type="submit" disabled={busy}>{busy ? "Please wait…" : mode === "sign-in" ? "Sign in securely" : "Create account"}</Button>
     </form>
-    <p className="field-hint">Live Supabase authentication has not yet been verified for this edition.</p>
+    <p className="field-hint">Your Memories are private to your account.</p>
     <Link href="/">Return to REIBRY</Link>
   </section>;
 }

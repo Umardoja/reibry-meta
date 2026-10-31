@@ -1,33 +1,39 @@
-/* Selected tokens from original REIBRY globals.css, commit 76d3494465bab43a5051498e90b9a486a65312b9. Original contributors retain attribution. */
+/* REIBRY design tokens. Brand teal from original REIBRY (commit 76d3494465bab43a5051498e90b9a486a65312b9; original contributors retain
+   attribution), re-based in Stage 12J-3 "Personal Memory Atlas": warm paper surfaces, editorial serif headlines, one restrained warm accent.
+   Text colours keep at least 4.5:1 contrast on --bg and --surface. */
 :root {
   /* Brand */
-  --primary:          #005145;
+  --primary:          #0B4F45;
   --primary-mid:      #0F6B5C;
   --primary-sec:      #167D6B;
+  --primary-tint:     #E3EFEA;
   --accent-mint:      #7CC7B8;
+  --accent-warm:      #C8643F;   /* decorative and large text only */
+  --accent-warm-ink:  #A84E2C;   /* warm accent for small text (4.9:1 on white) */
+  --accent-warm-tint: #F8E7DD;
 
-  /* Surface */
-  --bg:               #f0fcf8;
-  --surface:          #ffffff;
-  --surface-low:      #eaf6f3;
-  --surface-mid:      #e4f1ed;
-  --surface-high:     #d9e5e2;
-  --surface-dim:      #d0ddd9;
+  /* Surface: warm paper */
+  --bg:               #F7F4EE;
+  --surface:          #FFFFFF;
+  --surface-low:      #F1EDE5;
+  --surface-mid:      #E9E3D8;
+  --surface-high:     #DDD5C7;
+  --surface-dim:      #D2C9B9;
 
   /* Text */
-  --on-surface:       #131e1c;
-  --on-surface-var:   #3f4946;
-  --outline:          #6f7976;
-  --outline-var:      #bec9c5;
+  --on-surface:       #15201D;
+  --on-surface-var:   #4A5753;
+  --outline:          #66716D;
+  --outline-var:      #DCD5C8;
 
   /* Semantic */
-  --border-hair:      rgba(22,33,31,.06);
-  --border-focus:     rgba(15,107,92,.12);
-  --shadow-card:      0 1px 2px rgba(11,61,53,.03), 0 2px 6px rgba(11,61,53,.04);
-  --shadow-float:     0 4px 16px rgba(11,61,53,.06), 0 1px 2px rgba(11,61,53,.02);
-  --shadow-elevated:  0 8px 24px rgba(11,61,53,.12), 0 2px 6px rgba(11,61,53,.05);
+  --border-hair:      rgba(40,32,18,.08);
+  --border-focus:     rgba(15,107,92,.22);
+  --shadow-card:      0 1px 2px rgba(48,36,16,.04), 0 2px 8px rgba(48,36,16,.05);
+  --shadow-float:     0 6px 20px rgba(48,36,16,.08), 0 1px 3px rgba(48,36,16,.05);
+  --shadow-elevated:  0 14px 36px rgba(48,36,16,.14), 0 3px 8px rgba(48,36,16,.06);
 
-  /* Spacing scale: 4 8 12 16 24 32 48 */
+  /* Spacing: 4 8 12 16 24 32 48 64 */
   --sp-xs:  4px;
   --sp-sm:  8px;
   --sp-md:  12px;
@@ -35,14 +41,26 @@
   --sp-xl:  24px;
   --sp-2xl: 32px;
   --sp-3xl: 48px;
+  --sp-4xl: 64px;
 
-  --gutter: 16px;
-  --nav-h:  68px;
+  --gutter: 18px;
+  --nav-h:  70px;
+  --content-max: 1120px;
 
   /* Radius */
-  --r-sm:  8px;
-  --r-md:  12px;
-  --r-lg:  16px;
-  --r-xl:  20px;
+  --r-sm:  10px;
+  --r-md:  14px;
+  --r-lg:  20px;
+  --r-xl:  28px;
+  --r-pill: 999px;
+
+  /* Type */
+  --font-sans: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-display: ui-serif, "New York", "Iowan Old Style", Charter, "Source Serif Pro", Georgia, "Times New Roman", serif;
+  --fs-xs: 12px; --fs-sm: 13px; --fs-base: 15px; --fs-md: 17px; --fs-lg: 20px; --fs-xl: 24px; --fs-2xl: 30px; --fs-3xl: 38px;
+
+  /* Motion */
+  --ease: cubic-bezier(.2,.7,.2,1);
+  --dur: 180ms;
 }
-:root { --error: #9a1212; --warning: #785515; --success: var(--primary-mid); --font-sans: Geist, Inter, system-ui, sans-serif; }
+:root { --error: #9a1a12; --error-tint: #FBE9E6; --warning: #785515; --success: var(--primary-mid); }

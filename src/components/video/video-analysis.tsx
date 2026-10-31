@@ -58,7 +58,7 @@ export function VideoAnalysisPanel({ video }: { video: MemoryVideo }) {
   return <section className="video-analysis" aria-label="Video analysis">
     {video.summary && <p>{video.summary}</p>}
     <h3>What the video shows</h3>
-    <p className="field-hint">From Muse Spark&apos;s analysis of the video frames.</p>
+    <p className="field-hint">From REIBRY&apos;s analysis of the video.</p>
     <ol>{visual.scenes.map((scene, index) => <li key={index}><strong>{scene.startSeconds}–{scene.endSeconds} s:</strong> {scene.background} background
       {scene.objects.length ? `; ${scene.objects.join(", ")}` : ""}{scene.onScreenText.length ? `; on-screen text “${scene.onScreenText.join(" / ")}”` : ""}; {scene.motion}</li>)}</ol>
     <ul>{visual.observations.map((item, index) => <li key={index}>{item}</li>)}</ul>
@@ -73,7 +73,7 @@ export function VideoAnalysisPanel({ video }: { video: MemoryVideo }) {
     {(video.concepts.length > 0 || visual.occasions.length > 0) && <><h3>Topics and occasions</h3>
       <p className="source-value">{[...video.concepts, ...visual.occasions.map(item => `${item.suggestion}${item.basis === "inferred" ? " (inferred)" : ""}`)].join(" · ")}</p></>}
     {visual.gaps.length > 0 && <><h3>Not visible or uncertain</h3><ul>{visual.gaps.map((item, index) => <li key={index}>{item}</li>)}</ul></>}
-    <p className="field-hint">Visual details: Muse Spark 1.3 video analysis ({visual.fps} frame per second). {video.transcript ? "Speech: Muse Voice Transcribe. " : ""}
+    <p className="field-hint">What it shows comes from REIBRY&apos;s analysis of the video ({visual.fps} frame per second). {video.transcript ? "What&apos;s said comes from an automatic transcript. " : ""}
       {video.analyzedAt ? `Analysed ${new Date(video.analyzedAt).toLocaleString()}.` : ""}</p>
   </section>;
 }

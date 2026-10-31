@@ -24,3 +24,17 @@ export function parseSharedFragment(hash: string): SharedPayload | null {
   let params: URLSearchParams; try { params = new URLSearchParams(hash.replace(/^#/, "")); } catch { return null; }
   return parseSharedPayload(name => params.get(name));
 }
+
+/** What a share delivered to Capture (query and fragment), so the page can say so when no usable link arrived (e.g. a Shortcut whose
+ * Text action produced "#url=" with nothing after it). Additive: it uses the parsers above unchanged and is never sent anywhere. */
+export type ShareArrival = { arrived: boolean; fromShortcut: boolean; payload: SharedPayload | null; received: string };
+export function readShareArrival(search: string, hash: string): ShareArrival {
+  const query = new URLSearchParams(search);
+  let fragment: URLSearchParams; try { fragment = new URLSearchParams(hash.replace(/^#/, "")); } catch { fragment = new URLSearchParams(); }
+  const keys = ["url", "text", "title"] as const;
+  const arrived = keys.some(key => query.has(key) || fragment.has(key)) || query.get("src") === "shortcut" || fragment.get("src") === "shortcut";
+  const fromShortcut = query.get("src") === "shortcut" || fragment.get("src") === "shortcut";
+  const payload = parseSharedFragment(hash) ?? parseSharedPayload(name => query.get(name));
+  const received = keys.map(key => fragment.get(key) ?? query.get(key)).filter((value): value is string => !!value && !!value.trim()).join(" ").replace(/\s+/g, " ").trim().slice(0, 300);
+  return { arrived, fromShortcut, payload, received };
+}
