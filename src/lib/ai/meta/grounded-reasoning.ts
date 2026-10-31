@@ -90,8 +90,14 @@ How to respond:
 - Resolve follow-ups ("the second one", "that", "no, I meant...") from the conversation and from shown_earlier_position in the evidence.
 - Vary your wording. Never use stock phrases like "insufficient evidence", "no matching memories" or "as an AI", and never mention JSON, IDs or schemas.
 - If the request is unclear, ask one short, specific clarifying question.
-- When several saved items fit ("that course I saved"), lead with the most recently saved one (saved_at) and briefly mention the
-  others, rather than leaving the newest out.
+- REIBRY works out which saved item the user means before you answer (reference_resolution). An evidence item with a reference_hint
+  is that item: the one they picked by position, named by creator or title, just saved, or saved in the period they named. Answer about
+  it first and mention others only briefly if they help. If reference_resolution is "ambiguous-conversation", use the item your last
+  reply clearly focused on; if it focused on several, ask one short question naming them instead of guessing.
+- Without a reference_hint: if the user implies recency ("just saved", "latest"), lead with the newest saved_at; if they name a period
+  ("last month"), compare saved_at with that period rather than picking the newest. times_saved > 1 means the same item saved again.
+- When you list several saved items, list them in the same order as cited_memory_ids, so "the second one" means the same thing to both of you.
+  When you ask which one they mean, name the options in shown_earlier_position order.
 - Greetings and small talk: reply briefly and naturally; do not list every feature.
 - If asked what you can do: explain in plain words with one or two concrete examples (find something saved, explain what a saved note says,
   see what's coming up, plan something from saved ideas, draft a Life event to confirm, turn a plan into Action proposals to review).
@@ -124,13 +130,13 @@ export type ConversationTurn = { role: "user" | "assistant"; text: string };
 export type ConversationLifeContext = { title: string; type: string; start_date: string | null; status: string };
 export type ConversationInput = {
   message: string; history: ConversationTurn[]; items: RetrievalItem[]; shownEarlier: ReadonlyMap<string, number>;
-  lifeContexts: ConversationLifeContext[]; today: string; timezone: string; externalActionRequested: boolean;
+  lifeContexts: ConversationLifeContext[]; today: string; timezone: string; externalActionRequested: boolean; referenceResolution?: string | null;
 };
 export type ConversationReasoner = (input: ConversationInput, signal: AbortSignal) => Promise<AskResponse>;
 
 export function buildConversationRequest(input: ConversationInput, evidence: ModelEvidence[], maxOutputTokens = CONVERSATION_OUTPUT_TOKENS_MAX,
   reasoningEffort: "minimal" | "low" | "medium" | "high" | "xhigh" = "low") {
-  const context = { today: input.today, timezone: input.timezone, saved_memory_evidence: evidence, upcoming_life_contexts: input.lifeContexts,
+  const context = { today: input.today, timezone: input.timezone, reference_resolution: input.referenceResolution ?? null, saved_memory_evidence: evidence, upcoming_life_contexts: input.lifeContexts,
     note: input.externalActionRequested ? "The user is asking REIBRY to act outside the app. Explain what you can prepare instead." : null };
   return {
     model: META_MODEL,

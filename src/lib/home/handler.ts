@@ -10,7 +10,8 @@ import { LifeRepositoryFailure, type LifeRepository } from "../life/repository.t
 import { createLifeFromText, deterministicLifeContext } from "../life/service.ts";
 import { MemoryRepositoryFailure, type MemoryRepository } from "../memory/repository.ts";
 import { SEARCH_CANDIDATE_MAX, type RetrievalItem } from "../retrieval/contracts.ts";
-import { memoryEvidenceItem, rankMemories } from "../retrieval/service.ts";
+import type { Memory } from "../memory/contracts.ts";
+import { resolveConversationEvidence } from "./references.ts";
 import { emptyHomeResponse, homeLifeItem, HomeContractError, HOME_RESULT_MAX, parseHomeBody, type HomeIntent, type HomeRequest, type HomeResponse } from "./contracts.ts";
 import { classifyHomeIntent, isPlanningRequest, isSmallTalk } from "./intent.ts";
 
@@ -80,25 +81,19 @@ function assertOwner(context: HomeContext) {
   if ([context.memoryRepository.ownerId, context.lifeRepository.ownerId, context.actionRepository.ownerId].some(id => id !== context.userId)) throw new AuthFailure("AUTH_REQUIRED");
 }
 
-// Single filler-term matches are noise when a much stronger match exists ("plan" also matching an unrelated "Study plan").
-function relevant(items: RetrievalItem[]) { const top = items[0]?.match.score ?? 0; return items.filter(item => item.match.score >= top * 0.4); }
-async function conversationEvidence(input: HomeRequest, context: HomeContext) {
+async function conversationEvidence(input: HomeRequest, context: HomeContext, now: Date) {
   const candidates = (await context.memoryRepository.searchCandidates(SEARCH_CANDIDATE_MAX)).filter(memory => memory.userId === context.userId);
   const owned = new Map(candidates.map(memory => [memory.id, memory]));
   // Client references are only hints about what was shown last turn; each one is re-read through the owner-bound repository.
-  const referenced: RetrievalItem[] = []; const shownEarlier = new Map<string, number>();
+  // Missing (deleted) and foreign IDs are dropped; the rest keep the position the user saw them in.
+  const referenced: Array<{ memory: Memory; position: number }> = [];
   for (const [index, id] of input.references.entries()) {
     let memory = owned.get(id);
     if (!memory) { try { memory = await context.memoryRepository.read(id); } catch (error) { if (error instanceof MemoryRepositoryFailure && error.code === "NOT_FOUND") continue; throw error; } }
-    if (memory.userId !== context.userId) continue;
-    referenced.push(memoryEvidenceItem(memory)); shownEarlier.set(memory.id, index + 1);
+    if (memory.userId === context.userId) referenced.push({ memory, position: index + 1 });
   }
-  const current = relevant(rankMemories(candidates, input.message, HOME_RESULT_MAX).items);
-  const priorUser = [...input.history].reverse().find(turn => turn.role === "user")?.text;
-  const prior = current.length < 2 && priorUser ? relevant(rankMemories(candidates, `${priorUser} ${input.message}`, HOME_RESULT_MAX).items) : [];
-  const merged = new Map<string, RetrievalItem>();
-  for (const item of [...current.slice(0, 3), ...referenced, ...current.slice(3), ...prior]) if (!merged.has(item.memoryId)) merged.set(item.memoryId, item);
-  return { items: [...merged.values()].slice(0, HOME_RESULT_MAX), shownEarlier };
+  return resolveConversationEvidence({ message: input.message, priorUserText: [...input.history].reverse().find(turn => turn.role === "user")?.text,
+    candidates, referenced, now, timezone: input.timezone, limit: HOME_RESULT_MAX });
 }
 function smallTalkReply(message: string) {
   if (/\b(?:thanks|thank you|thx|cheers)\b/i.test(message)) return "You're welcome, happy to help.";
@@ -114,7 +109,7 @@ async function converse(input: HomeRequest, intent: HomeIntent, context: HomeCon
   signal: AbortSignal, now: () => Date, trace: HomeTrace): Promise<HomeResult> {
   const chatty = isSmallTalk(input.message);
   trace.enter("retrieval");
-  const { items, shownEarlier } = chatty ? { items: [] as RetrievalItem[], shownEarlier: new Map<string, number>() } : await conversationEvidence(input, context);
+  const { items, shownEarlier, resolution } = chatty ? { items: [] as RetrievalItem[], shownEarlier: new Map<string, number>(), resolution: null } : await conversationEvidence(input, context, now());
   trace.enter("life");
   const lifeContexts = chatty ? [] : (await context.lifeRepository.listUpcoming(now().toISOString(), 5))
     .map(item => ({ title: item.title, type: item.type, start_date: item.startDate, status: item.status }));
@@ -131,7 +126,7 @@ async function converse(input: HomeRequest, intent: HomeIntent, context: HomeCon
     trace.providerInvoked = true;
     answer = await reasoner({ message: input.message, history: input.history, items, shownEarlier, lifeContexts, timezone: input.timezone,
       today: new Intl.DateTimeFormat("en-GB", { dateStyle: "full", timeStyle: "short", timeZone: input.timezone }).format(now()),
-      externalActionRequested: intent === "UNSUPPORTED" }, signal);
+      externalActionRequested: intent === "UNSUPPORTED", referenceResolution: resolution }, signal);
   } catch (error) { if (error instanceof MetaClientError) { trace.providerOutcome = error.diagnostic ? `${error.code}:${error.diagnostic}` : error.code; return fallback(error.code, error.diagnostic); } throw error; }
   trace.providerOutcome = "valid"; trace.usage = answer.usage;
   trace.enter("proposals");

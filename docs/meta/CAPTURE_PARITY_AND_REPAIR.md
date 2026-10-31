@@ -480,3 +480,14 @@ Test video: `https://www.youtube.com/watch?v=kqtD5dpn9C8` (tracking parameter ad
 - TikTok captions and covers need the Display API; Instagram needs a Meta app token.
 - Share-link versus canonical-URL duplicates are possible (see above).
 - Pre-12I duplicate rows of the freeCodeCamp test video remain in User A's development data. They are tracked for cleanup, and they visibly affected one conversation answer.
+
+## 11. Stage 12I-1B: finding the captured Memory in conversation
+
+- Capture is unchanged. The fix is in how Home works out which captured Memory the user means: "just saved", "the second one", "the Mosh one", "last month" and "that video" now resolve deterministically before Muse is called (`src/lib/home/references.ts`).
+- The Stage 12I-1 miss was a retrieval cutoff, not missing save dates. See `LOCAL_CONVERSATION_QA.md`, Stage 12I-1B.
+- Copies of the same captured item (the pre-12I freeCodeCamp copies, including a `youtu.be` share-link copy without `postId`) are grouped for the model. This also covers share-link versus canonical-URL copies of the same post when the post ID or URL agrees.
+- No stored Memory is merged or deleted, and no migration was needed.
+- A newly captured link that still has a placeholder title is offered for "the one I just saved" even when no words match.
+- **Live:** 3/3 Muse turns cited the just-saved Mosh course correctly, for $0.01834.
+- **Browser:** 10/10.
+- **Tests:** 255/255 (14 new reference-resolution tests).

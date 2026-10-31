@@ -20,6 +20,10 @@ export type RetrievalItem = {
   sourceDetails?: { platform: string | null; creator: string | null; caption: string | null; userNote: string | null } | null;
   /** When the Memory was saved, so "the course I just saved" can be resolved by recency. */
   savedAt?: string;
+  /** Home only: how REIBRY resolved that the user means this Memory ("the second one", "the Mosh one", "just saved"). */
+  referenceHint?: string | null;
+  /** Home only: how many owned Memories are the same saved item; only this representative is sent as evidence. */
+  timesSaved?: number;
 };
 export type RetrievalResponse = { query: string; state: "matches" | "no-match"; items: RetrievalItem[] };
 export type SearchRequest = { query: string; limit: number };

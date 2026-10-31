@@ -31,6 +31,10 @@ export type ModelEvidence = {
   /** Link Memories only: creator and caption as supplied by the platform/page (not watched or transcribed), and the user's own note. */
   link_details: { platform: string | null; creator_from_provider: string | null; provider_caption: string | null; user_note: string | null } | null;
   saved_at: string | null;
+  /** Home only: REIBRY's deterministic resolution that the user means this item; null when no reference was resolved. */
+  reference_hint: string | null;
+  /** The user saved this same item this many times; it is one item, sent once. */
+  times_saved: number;
 };
 export type GroundedModelAnswer = {
   answer: string;
@@ -122,6 +126,8 @@ export function toModelEvidence(items: RetrievalItem[], shownEarlier: ReadonlyMa
       link_details: item.sourceType === "link" && item.sourceDetails ? { platform: item.sourceDetails.platform, creator_from_provider: item.sourceDetails.creator,
         provider_caption: item.sourceDetails.caption, user_note: item.sourceDetails.userNote } : null,
       saved_at: item.savedAt ?? null,
+      reference_hint: item.referenceHint ?? null,
+      times_saved: item.timesSaved ?? 1,
     };
   });
   if (new TextEncoder().encode(JSON.stringify(result)).length > META_EVIDENCE_BYTES_MAX) throw new MetaContractError("Evidence payload is too large.");

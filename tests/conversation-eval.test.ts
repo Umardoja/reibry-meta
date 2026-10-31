@@ -166,5 +166,5 @@ test("live 12I-1 defect: evidence carries saved_at and the policy leads with the
   const { sent, ask } = harness(() => reply("You most recently saved the Python course note.", [id(4)]));
   await ask("Find that course I saved and tell me what it's about.");
   const course = sent[0].context.saved_memory_evidence.find(item => item.memory_id === id(4)) as unknown as { saved_at: string | null };
-  assert.equal(course.saved_at, "2026-10-24T12:00:00.000Z"); assert.match(sent[0].body.instructions, /lead with the most recently saved one \(saved_at\)/);
+  assert.equal(course.saved_at, "2026-10-24T12:00:00.000Z"); assert.match(sent[0].body.instructions, /lead with the newest saved_at/);
 });

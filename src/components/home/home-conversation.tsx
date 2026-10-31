@@ -18,10 +18,14 @@ function recentHistory(turns: Turn[]): HomeHistoryTurn[] {
   while (history.reduce((total, turn) => total + turn.text.length, 0) > HOME_HISTORY_CHARS_MAX) history.shift();
   return history;
 }
+// The Memories most recently shown as cards, in displayed order. A clarifying reply ("Which one, A or B?") shows none, so the answer to it
+// ("the second one") still refers to the cards before it.
 function shownMemoryIds(turns: Turn[]) {
-  const last = [...turns].reverse().find(turn => turn.role === "assistant")?.response;
-  const ids = last?.groundedAnswer?.citations.length ? last.groundedAnswer.citations.map(item => item.memory_id) : last?.memories.map(item => item.memoryId) ?? [];
-  return ids.slice(0, HOME_REFERENCES_MAX);
+  for (const turn of [...turns].reverse()) {
+    const shown = turn.response?.groundedAnswer?.citations.length ? turn.response.groundedAnswer.citations.map(item => item.memory_id) : turn.response?.memories.map(item => item.memoryId) ?? [];
+    if (shown.length) return shown.slice(0, HOME_REFERENCES_MAX);
+  }
+  return [];
 }
 
 function EvidenceList({ response }: { response: HomeResponse }) {

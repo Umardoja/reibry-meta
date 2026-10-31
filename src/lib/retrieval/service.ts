@@ -79,9 +79,9 @@ export async function searchOwnedMemories(repository: MemoryRepository, query: s
 }
 
 /** Evidence for a Memory the user is referring back to; the caller must have read it through the owner-bound repository. */
-export function memoryEvidenceItem(memory: Memory): RetrievalItem {
+export function memoryEvidenceItem(memory: Memory, reason = "Shown earlier in this conversation."): RetrievalItem {
   return validateRetrievalItem({ memoryId: memory.id, memoryHref: `/memories#memory-${memory.id}`, displayTitle: memory.title,
     sourceType: memory.sourceType, storedExcerpt: memory.sourceType === "text" ? excerpt(memory.rawText, "", []) : null,
     matchedSourceMetadata: metadataValues(memory.metadata).slice(0, 3).map(value => value.slice(0, 200)), sourceUrl: memory.sourceUrl,
-    processingStatus: memory.analysisStatus, match: { reason: "Shown earlier in this conversation.", score: 1, fields: ["title"] }, sourceDetails: sourceDetails(memory), savedAt: memory.createdAt });
+    processingStatus: memory.analysisStatus, match: { reason, score: 1, fields: ["title"] }, sourceDetails: sourceDetails(memory), savedAt: memory.createdAt });
 }

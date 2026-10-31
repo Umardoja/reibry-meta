@@ -354,3 +354,97 @@ Each Muse turn costs about $0.003–0.006 at observed token counts.
 - a request ID, also sent as the `X-Request-Id` header.
 
 None of it includes message text, IDs or secrets.
+
+## Stage 12I-1B: exact Memory reference and conversational recall
+
+### Why Stage 12I-1 turn 1 picked the wrong Memory
+
+**Correction to the Stage 12I-1 notes.** Missing save dates were not the real cause, and the `saved_at` prompt fix alone would not have fixed it.
+
+A read-only replay of User A's 22 real Memories through the Stage 12I-1 code showed:
+
+- **"Find that course I saved…"**: after filler words are removed, the only search term is "course". The new Mosh video contains "course" only in the user's note, so it scored 18. The top match scored 50, and the relative relevance cutoff (40% of the top score, so 20) dropped it. **Muse never received it.**
+- **"…Python course I just saved"**: the Mosh course ranked 5th of 5. Three of the 6 evidence slots went to the same freeCodeCamp video, saved three times: two `watch?v=` copies and one `youtu.be` share-link copy. The newer copies have `postId`; the oldest has only the URL. "Just saved" had no deterministic effect.
+- **"What do you actually know about that video?"**: the generic word "video" ranked an unrelated TikTok and the lemon cake video ahead of the item under discussion.
+- **"…the Programming with Mosh one…"**: the named creator ranked 3rd (score 5), behind "Study plan note", which matched only "plan".
+
+### Fix: deterministic reference resolution (`src/lib/home/references.ts`)
+
+REIBRY now works out which Memory the user means before calling Muse. Resolution follows this priority:
+
+| User says | Resolution |
+| --- | --- |
+| "the second one", "number 2", "the last one" | The item at that **displayed** position from the previous reply. Positions stay as displayed even if an earlier item was since deleted. |
+| "the Mosh course", "the Programming with Mosh one" | **Named**: the message contains the full creator name, a creator word no other saved item shares, or the full title |
+| "from last month", "yesterday", "this week" | Matches **saved in that local-calendar period** (user's timezone, weeks start on Monday). If a duplicated item has an in-period copy, that copy is the one cited. |
+| "just saved", "latest", "most recent" | The **newest matching** Memory first. The newest save overall from the last 7 days is also offered, so a just-captured link with only a placeholder title is not missed. |
+| "that video", "that one", "it" (no other identifying words) | **Only** the Memories shown in the previous reply. With one, it is resolved; with several, `ambiguous-conversation` and the model must ask. |
+
+**Duplicate grouping:**
+
+- Copies of the same item (platform + post ID, YouTube `v=` / `youtu.be`, TikTok `/video/`, or the same URL path) are sent to the model **once**, with `times_saved`.
+- The cited identity is a real Memory ID: the copy the user was shown, otherwise the newest copy.
+- No Memory is deleted or merged in storage.
+- A citation of a copy that was not sent is still rejected (`citation_mismatch`).
+
+**Words removed from search:** reference words ("last month", "just saved", "the second one") are no longer used as search terms.
+
+**What the model receives:**
+
+- each evidence item carries `reference_hint` and `times_saved`;
+- the turn context carries `reference_resolution`;
+- the instructions say:
+  - answer about the hinted item;
+  - ask a question naming the options (in displayed order) when the reference is ambiguous;
+  - compare `saved_at` with a named period rather than picking the newest;
+  - list items in citation order.
+- This replaces the Stage 12I-1 instruction to "lead with the most recently saved one".
+
+**Home screen fix:** follow-ups now send the cards from the most recent reply that **showed** Memories. Previously, after a clarifying reply with no cards ("Do you mean A or B?"), the answer "the second one" carried no references.
+
+**Unchanged security rules:**
+
+- every referenced ID is re-read through the owner-bound repository;
+- missing and foreign IDs are dropped;
+- the user ID always comes from the verified session;
+- citation, grounding and action-honesty validation are unchanged.
+
+### Live Muse QA (3 of 3 allowed calls; no retries)
+
+**Setup:** real dev server, synthetic User A, `Africa/Lagos`. M = the Programming with Mosh course (saved 2026-10-30 21:20 UTC). F = the freeCodeCamp course (×3). N = the synthetic FastAPI course note. S = the synthetic study-plan note.
+
+**Candidate order:** the same resolver run locally on the same inputs; the server derives it independently.
+
+| Turn | Resolution and candidates | Reply (verbatim) | Cited | Tokens in/out | Latency (provider) |
+| --- | --- | --- | --- | --- | --- |
+| "Find that Python course I just saved." | most-recent-match: **M** [hint], N, F×3 | "Found it — Python for Beginners - Learn Coding with Python in 1 Hour by Programming with Mosh, from the saved title. You noted you want to try this before the FastAPI course." | M ✓ | 1,770 / 667 | 5.6 s (4.9 s) |
+| "What do you actually know about that video?" | conversation: **M** only | "Just what's in what you saved — from the saved title it's "Python for Beginners - Learn Coding with Python in 1 Hour", the provider info says it's by Programming with Mosh on YouTube, and you noted you want to try this before the FastAPI course. I haven't watched it, so I don't know what's actually in the video itself." | M ✓ | 1,507 / 730 | 5.2 s (4.1 s) |
+| "No, I meant the Programming with Mosh one. Can you help me plan learning from it?" | named: **M** [hint], S, N | "Got it — the Programming with Mosh one. From the saved title it's Python for Beginners - Learn Coding with Python in 1 Hour, and you noted you want to try this before the FastAPI course. Want to start with that 1-hour intro, then move into your FastAPI plan of one module per evening starting with routing?" | M, N ✓ | 1,936 / 1,384 | 9.2 s (7.4 s) |
+
+**Results:**
+
+- All three replies were HTTP 200 with `providerOutcome: valid` and no Auth or provider errors.
+- Every citation link points to the cited Memory.
+- **Spend: $0.01834** (ceiling $0.05).
+- Turn 3 was a planning request, so the normal Home path saved **2 pending Action proposals** (`proposed`, not confirmed) for User A. They are recorded in the synthetic-records manifest.
+- **The recency fix works live:** turn 1 now finds the just-saved course, which Stage 12I-1 missed.
+
+### Browser check (localhost Home, 390 px): 10/10
+
+The Muse budget was spent, so `/api/home` replies were intercepted and served from the recorded live replies plus one scripted clarification, all citing User A's real Memory IDs. No request reached Meta.
+
+**Verified:**
+
+- the just-saved course is the first card;
+- the follow-up sends exactly the shown Memory;
+- the reply separates saved details from the video;
+- two cards appear in cited order;
+- the ambiguous "that one" sends both shown IDs in displayed order and shows a question with no cards;
+- **"The second one" after the clarification still sends the earlier cards** (this needed the UI fix) and opens the freeCodeCamp Memory;
+- a cited card opens `/memories#memory-…` at the correct saved item.
+
+### Remaining issues
+
+- A query with no recency cue ("that course I saved") still relies on word matching. A Memory that matches only through the user's note can fall under the relative relevance cutoff.
+- "Named" matching is word-based. A creator or title shared by several items gives `named:several`, and Muse picks among them.
+- Ordinal and period phrases are English only.
