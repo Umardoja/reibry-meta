@@ -18,7 +18,7 @@ There is no deployment, no background queue, and no download of TikTok, Instagra
    - the response returns as soon as the video is saved. **No analysis runs during the save.**
 4. The page shows **Saved → Ready to analyze** with an **Analyze video** button.
 5. **Visual step** (`POST /api/capture/{id}/video-analysis` with `{ "step": "visual" }`):
-   - the server downloads the video through the **owner's own session** (Storage owner-read policy);
+   - the server proves ownership by reading the video's storage path through the **owner's own session** (`memory_videos` RLS returns it only to the owner), then downloads the object with the server key. The bucket has **no** client Storage policies; see "Design change" below;
    - it sends the video inline to Muse Spark 1.3 (`input_video` data URL, `fps: 1`, `store: false`, Standard model, strict JSON schema with **no speech field**);
    - it stores the validated visual findings.
    - The page shows **Analyzing visual details…**
@@ -58,9 +58,9 @@ There is no deployment, no background queue, and no download of TikTok, Instagra
   - allowlisted, validated JSON for visual findings and transcripts;
   - a transcript only if the video has audio.
 - **Storage:** a private bucket `memory-videos` (20 MB, `video/mp4`).
-  - Owner **read** and **delete** policies apply to the user's own folder.
-  - There is **no** user upload or overwrite policy, so every stored video has passed the server's checks.
-- **Deleting a Memory** first removes the Storage object through the Storage API with the owner's session, then the row (the analysis cascades). If the object removal fails, the Memory is kept, so media is never orphaned.
+  - **As applied, there are zero client Storage policies.** No user token, the owner's included, can list, read, upload, overwrite or delete objects through the Storage API. The owner read and delete policies in the first draft were removed before the push; see "Design change" below.
+  - Every upload, download and delete is done by the server with its key, only after it has proven ownership (an owner-session RLS read of the path) and checked that the path is in the verified user's folder. So every stored video has passed the server's checks.
+- **Deleting a Memory** first removes the Storage object through the Storage API, using the server key after that ownership check, then the row (the analysis cascades). If the object removal fails, the Memory is kept, so media is never orphaned.
 - **A failed save** removes the object it just uploaded.
 
 ### Search and Home

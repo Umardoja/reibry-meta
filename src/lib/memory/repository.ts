@@ -15,4 +15,6 @@ export interface MemoryRepository {
   read(id: string): Promise<Memory>;
   update(id: string, input: MemoryUpdate): Promise<Memory>;
   delete(id: string): Promise<void>;
+  /** The owner's oldest link Memory recorded for this platform post ID (other than excludeId), or null. Owner-scoped like every read. */
+  findLinkByPostId?(platform: "tiktok", postId: string, excludeId?: string): Promise<Memory | null>;
 }

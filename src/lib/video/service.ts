@@ -15,7 +15,7 @@ export type VideoStore = {
   createMemory(input: { title: string; note: string | null; dedupeKey: string; path: string; sizeBytes: number } & ProbedVideo): Promise<Memory>;
   /** Owner-scoped: the storage path of the owner's own video (RLS), or null. */
   ownedPath(memoryId: string): Promise<string | null>;
-  /** Owner-scoped Storage download through the owner read policy. */
+  /** Server-key Storage download of a path already proven to be the owner's (see ownedPath); the bucket has no client policies. */
   download(path: string): Promise<Uint8Array>;
   beginStep(memoryId: string, step: VideoStep): Promise<void>;
   recordVisual(memoryId: string, visual: VideoVisual): Promise<void>;

@@ -54,13 +54,15 @@ test("repeated shares (tracking variants and resolved share links) return the ex
   const repo = repository(); const offline = async (): Promise<MetadataResult> => ({ status: "unavailable", provider: null, reason: "provider-error", provenance: {} });
   const first = await saveAndEnrich({ sourceType: "link", content: tiktok }, repo, offline);
   const tracked = await saveAndEnrich({ sourceType: "link", content: `${tiktok}?is_from_webapp=1&_t=abc` }, repo, offline);
-  // A share link cannot be resolved without network, so save-first keys it by its own identity; enrichment records the canonical post.
+  // A share link cannot be resolved without network, so save-first keys it by its own identity. Enrichment resolves it to the post; the
+  // same verified post ID as the earlier full link means one Memory (Stage 12J-1): the earlier Memory is kept and returned.
   const share = (n: number) => saveAndEnrich({ sourceType: "link", content: "https://vm.tiktok.com/ZMabc123/" }, repo, link => enrichLink(link, { resolve: publicDns,
     fetcher: async input => new URL(input.toString()).hostname === "vm.tiktok.com" ? redirect(`${tiktok}?n=${n}`) : json({ html: "<iframe></iframe>" }) }));
   const viaShare = await share(1); const viaShareAgain = await share(2);
   assert.equal(tracked.duplicate, true); assert.equal(tracked.memory.id, first.memory.id);
-  assert.equal(viaShareAgain.duplicate, true); assert.equal(viaShareAgain.memory.id, viaShare.memory.id);
+  assert.equal(viaShare.memory.id, first.memory.id); assert.equal(viaShareAgain.memory.id, first.memory.id);
   assert.equal(viaShare.memory.metadata.canonicalUrl, tiktok); assert.equal(viaShare.memory.metadata.postId, "7311223344556677889");
+  assert.equal((await repo.searchCandidates(50)).filter(memory => memory.metadata.platform === "tiktok").length, 1, "one Memory for one TikTok post");
   const yt = await saveAndEnrich({ sourceType: "link", content: "https://www.youtube.com/watch?v=rfscVS0vtbw" }, repo, offline);
   assert.equal((await saveAndEnrich({ sourceType: "link", content: "https://youtu.be/rfscVS0vtbw?si=share" }, repo, offline)).memory.id, yt.memory.id);
 });

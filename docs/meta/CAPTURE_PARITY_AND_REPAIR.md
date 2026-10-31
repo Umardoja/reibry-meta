@@ -491,3 +491,7 @@ Test video: `https://www.youtube.com/watch?v=kqtD5dpn9C8` (tracking parameter ad
 - **Live:** 3/3 Muse turns cited the just-saved Mosh course correctly, for $0.01834.
 - **Browser:** 10/10.
 - **Tests:** 255/255 (14 new reference-resolution tests).
+
+## 12. Stage 12J-1 update
+
+The Stage 12I-1 limitation "a share link and the canonical post URL can become two Memories" is resolved. Links with the same **verified** TikTok post ID are now one Memory: matched at save time when the post ID is already known, or merged at enrichment when a share link resolves, keeping the older Memory. Different post IDs never merge. See `docs/meta/IPHONE_SHARE_AND_CAPTURE_QA.md`.

@@ -64,6 +64,13 @@ export function createSupabaseMemoryRepository(client: SupabaseClient, ownerId: 
       const { data, error } = await client.from("memories").update(row).eq("user_id", ownerId).eq("id", id).select(readColumns).maybeSingle();
       if (error) return storage(error); if (!data) throw new MemoryRepositoryFailure("NOT_FOUND"); return decode(data);
     },
+    async findLinkByPostId(platform, postId, excludeId) {
+      let query = client.from("memories").select(readColumns).eq("user_id", ownerId).eq("source_type", "link")
+        .eq("metadata->>platform", platform).eq("metadata->>postId", postId);
+      if (excludeId) query = query.neq("id", excludeId);
+      const { data, error } = await query.order("created_at", { ascending: true }).order("id", { ascending: true }).limit(1);
+      if (error) return storage(error); return data?.length ? decode(data[0]) : null;
+    },
     async delete(id) {
       // A video's Storage object is removed first. Its path is read through the owner's own session (RLS returns it only to the owner)
       // and must sit in the owner's folder; only then is it removed through the Storage API. If removal fails the Memory is kept, so a

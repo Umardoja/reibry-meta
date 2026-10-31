@@ -51,6 +51,12 @@ export function createInMemoryMemoryRepository(ownerId: string, state: MemoryTes
       const current = owned(memoryId); const next = { ...current, ...input, updatedAt: now() };
       state.set(memoryId, next); return serializeMemory(next);
     },
-    async delete(memoryId) { owned(memoryId); state.delete(memoryId); },
+    // Like the database, deleting a Memory frees its owner-scoped dedupe key.
+    async delete(memoryId) { owned(memoryId); state.delete(memoryId); for (const [key, value] of dedupe) if (value === memoryId) dedupe.delete(key); },
+    async findLinkByPostId(platform, postId, excludeId) {
+      const match = [...state.values()].filter(item => item.userId === ownerId && item.sourceType === "link" && item.id !== excludeId
+        && item.metadata.platform === platform && item.metadata.postId === postId).sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id))[0];
+      return match ? serializeMemory(match) : null;
+    },
   };
 }

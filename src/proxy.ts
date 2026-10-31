@@ -13,8 +13,9 @@ export async function proxy(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
   const protectedDestination = pathname.startsWith("/memories") ? pathname : pathname.startsWith("/capture") ? "/capture" : pathname.startsWith("/ask") ? "/ask" : pathname.startsWith("/actions") ? "/actions" : pathname.startsWith("/today") ? "/today" : pathname.startsWith("/life") ? pathname : pathname.startsWith("/plans") ? pathname : pathname.startsWith("/settings") ? "/settings" : pathname.startsWith("/onboarding") ? "/onboarding" : "/account";
   const destination = new URL("/auth?next=" + encodeURIComponent(protectedDestination), origin);
-  // A signed-out share to /capture reaches the page, which verifies auth itself and only hands the link to sign-in (no data is exposed).
-  if (!incoming.some(c => isAuthCookie(c.name)) && pathname === "/capture" && (request.nextUrl.searchParams.has("url") || request.nextUrl.searchParams.has("text")))
+  // A signed-out visit to /capture reaches the page, which verifies auth itself and only hands a shared link to sign-in (no data is
+  // exposed). This includes a #url= fragment handoff, which the server cannot see and a redirect here would lose after sign-in.
+  if (!incoming.some(c => isAuthCookie(c.name)) && pathname === "/capture")
     return applyAuthCookies(NextResponse.next(), [], origin.startsWith("https:"));
   if (!incoming.some(c => isAuthCookie(c.name))) return applyAuthCookies(NextResponse.redirect(destination), [], origin.startsWith("https:"));
   try {

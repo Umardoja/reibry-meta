@@ -38,7 +38,8 @@ export function createTrustedEnrichmentClient(signal: AbortSignal,
 
 /**
  * Creates an elevated client solely for the trusted video RPCs and for uploading an already-validated video into the
- * verified user's own folder. Owner reads and deletes of videos use the user's own session, never this client.
+ * verified user's own folder. The bucket has no client Storage policies, so downloads and deletes also use this client, but only for
+ * a path first read through the owner's own session (memory_videos RLS) and checked to be inside the verified user's folder.
  */
 export function createTrustedVideoClient(signal: AbortSignal,
   dependencies: TrustedSupabaseDependencies = { env: process.env, fetch }): SupabaseClient {

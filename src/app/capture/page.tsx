@@ -1,24 +1,21 @@
-import { redirect } from "next/navigation";
+import type { Metadata } from "next";
 import { verifiedPageUser } from "@/lib/auth/server";
-import { CaptureForm, type SharedPayload } from "@/components/capture/capture-form";
+import { parseSharedPayload } from "@/lib/capture/share";
+import { CaptureForm } from "@/components/capture/capture-form";
 import { ShareHandoff } from "@/components/capture/share-handoff";
 import { VideoCapture } from "@/components/video/video-capture";
 import { Container } from "@/components/ui/primitives";
 export const dynamic = "force-dynamic";
+// A shared link can be private: never send this page's address (which may carry ?url=) to any other site.
+export const metadata: Metadata = { referrer: "no-referrer" };
 
-/** Share-sheet / iPhone Shortcut handoff: ?url=, ?text= and ?title= only prefill the form. Nothing is saved without the user's tap. */
-function sharedPayload(params: Record<string, string | string[] | undefined>): SharedPayload | null {
-  const one = (name: string) => { const value = params[name]; return typeof value === "string" ? value.trim() : ""; };
-  const text = one("text").slice(0, 5_000); const direct = one("url");
-  const url = (/^https:\/\/\S+$/i.test(direct) ? direct : text.match(/https:\/\/[^\s<>"']+/i)?.[0] ?? "").slice(0, 2_048);
-  if (!url) return null;
-  return { url, title: one("title").slice(0, 200), note: text.replace(url, "").replace(/\s+/g, " ").trim().slice(0, 5_000) };
-}
-
+/** Share-sheet / iPhone Shortcut handoff: ?url=, ?text= and ?title= (or the same in the #fragment) only prefill the form. Nothing is saved without the user's tap. */
 export default async function CapturePage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
-  const shared = sharedPayload(await searchParams);
+  const params = await searchParams;
+  const shared = parseSharedPayload(name => { const value = params[name]; return typeof value === "string" ? value : null; });
   let verified = false; try { verified = !!await verifiedPageUser(); } catch { /* Fail closed. */ }
-  if (!verified) { if (shared) return <Container><ShareHandoff shared={shared} /></Container>; redirect("/auth?next=/capture"); }
+  // Signed out: keep any shared link (query or fragment) in this tab only, then sign in and come back to a prefilled form.
+  if (!verified) return <Container><ShareHandoff shared={shared} /></Container>;
   return <Container><header className="section-heading"><p className="eyebrow">Capture</p><h1>Save a thought, link, or plan.</h1>
     <p>Share or paste a link and get back to what you were doing. REIBRY saves it first, then adds whatever details the platform shares.</p></header><CaptureForm shared={shared} /><VideoCapture /></Container>;
 }

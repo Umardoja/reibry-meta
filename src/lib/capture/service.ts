@@ -1,7 +1,7 @@
 import "server-only";
 import { createHash } from "node:crypto";
 import type { JsonValue, Memory } from "../memory/contracts.ts";
-import type { MemoryRepository } from "../memory/repository.ts";
+import { MemoryRepositoryFailure, type MemoryRepository } from "../memory/repository.ts";
 import { deterministicTitle, type CaptureInput } from "./contracts.ts";
 import { enrichLink, type FieldSource, type MetadataResult } from "./enrichment.ts";
 import type { EnrichmentWriter } from "./trusted-enrichment.ts";
@@ -12,6 +12,8 @@ export const ENRICHMENT_BUDGET_MS = 6_000;
 
 export type CaptureEnrichment = Pick<MetadataResult, "status" | "provider" | "reason">;
 export type CaptureResult = { memory: Memory; duplicate: boolean; enrichment: CaptureEnrichment };
+const enrichmentState = (memory: Memory): CaptureEnrichment["status"] => { const state = memory.metadata.enrichment;
+  return state === "complete" || state === "partial" || state === "unavailable" || state === "timed-out" ? state : "pending"; };
 export type LinkEnricher = (link: ParsedCaptureUrl) => Promise<MetadataResult>;
 function key(value: string) { return createHash("sha256").update(value, "utf8").digest("hex"); }
 function noteTitle(content: string) { return deterministicTitle(content.split(/\r?\n/, 1)[0] || "Saved note"); }
@@ -56,6 +58,12 @@ export async function capture(input: CaptureInput, repository: MemoryRepository)
     return { ...created, enrichment: { status: "unsupported", provider: null } };
   }
   const link = parsePublicLink(input.content);
+  // A full TikTok post link matches an earlier share-link Memory whose post ID enrichment already verified (a database read only;
+  // the save never contacts TikTok). Different post IDs never match.
+  if (link.platform === "tiktok" && link.postId && repository.findLinkByPostId) {
+    const earlier = await repository.findLinkByPostId("tiktok", link.postId);
+    if (earlier) { const memory = await improveDuplicate(earlier, repository, link, input); return { memory, duplicate: true, enrichment: { status: enrichmentState(memory), provider: null } }; }
+  }
   const metadata: Record<string, JsonValue> = { capture: "link", platform: link.platform, normalizedUrl: link.normalized, format: link.format, enrichment: "pending",
     metadataProvider: null, provenance: { title: input.title ? "user" : "reibry-placeholder", ...(link.creatorHandle ? { author: "url" } : {}), ...(input.note ? { note: "user" } : {}) } };
   if (link.postId) metadata.postId = link.postId;
@@ -64,8 +72,7 @@ export async function capture(input: CaptureInput, repository: MemoryRepository)
   const created = await repository.createUnique({ title: input.title || placeholderTitle(link), sourceType: "link", sourceUrl: link.submitted,
     rawText: input.note ?? null, analysisStatus: "processing", metadata }, key(`link\0${link.identity}`));
   const memory = created.duplicate ? await improveDuplicate(created.memory, repository, link, input) : created.memory;
-  const state = memory.metadata.enrichment;
-  return { ...created, memory, enrichment: { status: state === "complete" || state === "partial" || state === "unavailable" || state === "timed-out" ? state : "pending", provider: null } };
+  return { ...created, memory, enrichment: { status: enrichmentState(memory), provider: null } };
 }
 
 const ASCII_TAG = /^[A-Za-z0-9_]{2,40}$/;
@@ -92,6 +99,20 @@ export async function enrichSavedLink(memoryId: string, repository: MemoryReposi
   const owned = await repository.read(memoryId);
   if (owned.sourceType !== "link" || !owned.sourceUrl) return { memory: owned, enrichment: { status: "unsupported", provider: null } as CaptureEnrichment };
   const metadata = await withinBudget(enrich(parsePublicLink(owned.sourceUrl)), budgetMs);
+  const enrichment = { status: metadata.status, provider: metadata.provider, ...(metadata.reason ? { reason: metadata.reason } : {}) } as CaptureEnrichment;
+  // A TikTok share link resolved (by the bounded, SSRF-safe redirect resolver) to a post this user already saved: same verified post ID,
+  // so the two are one Memory. The OLDER Memory is kept; the other's note and user title fill only what the kept one lacks.
+  const postId = metadata.resolved?.platform === "tiktok" ? metadata.resolved.postId : null;
+  const other = postId && repository.findLinkByPostId ? await repository.findLinkByPostId("tiktok", postId, owned.id) : null;
+  if (other) {
+    const [kept, merged] = Date.parse(other.createdAt) <= Date.parse(owned.createdAt) ? [other, owned] : [owned, other];
+    let memory = kept;
+    if (kept.metadata.enrichment !== "complete") memory = await writer(kept.id, enrichmentDetails(metadata), metadata.title ?? null);
+    memory = await improveDuplicate(memory, repository, parsePublicLink(memory.sourceUrl ?? owned.sourceUrl),
+      { sourceType: "link", content: merged.sourceUrl ?? "", note: merged.rawText ?? undefined, title: provenanceOf(merged)?.title === "user" ? merged.title : undefined });
+    try { await repository.delete(merged.id); } catch (error) { if (!(error instanceof MemoryRepositoryFailure && error.code === "NOT_FOUND")) throw error; }
+    return { memory, enrichment, mergedDuplicate: { removedId: merged.id, postId } };
+  }
   const memory = await writer(owned.id, enrichmentDetails(metadata), metadata.title ?? null);
-  return { memory, enrichment: { status: metadata.status, provider: metadata.provider, ...(metadata.reason ? { reason: metadata.reason } : {}) } as CaptureEnrichment };
+  return { memory, enrichment };
 }

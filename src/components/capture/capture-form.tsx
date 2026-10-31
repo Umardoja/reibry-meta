@@ -1,15 +1,16 @@
 "use client";
-import { useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { Card } from "@/components/ui/primitives";
 import { RequireAuth } from "@/components/auth/require-auth";
 import { SourceDetails, limitationText } from "@/components/capture/source-details";
 import type { Memory } from "@/lib/memory/contracts";
+import { parseSharedFragment, type SharedPayload } from "@/lib/capture/share";
 
 type Enrichment = { status: "complete" | "partial" | "unavailable" | "unsupported" | "timed-out" | "pending"; provider: string | null; reason?: string };
 type CaptureReply = { memory: Memory; duplicate: boolean; enrichment: Enrichment };
-type DetailsReply = { memory: Memory; enrichment: Enrichment };
-export type SharedPayload = { url: string; title: string; note: string };
+type DetailsReply = { memory: Memory; enrichment: Enrichment; merged?: boolean };
+export type { SharedPayload };
 const PENDING_KEY = "reibry-pending-share";
 
 /** A share handed over before sign-in (iPhone Shortcut / share link) is kept per tab for up to 1 hour, then cleared. */
@@ -18,16 +19,20 @@ export function readPendingShare(): SharedPayload | null {
   try { const raw = sessionStorage.getItem(PENDING_KEY); if (!raw) return null;
     const value = JSON.parse(raw) as SharedPayload & { at: number }; return Date.now() - value.at < 3_600_000 ? { url: value.url, title: value.title, note: value.note } : null; } catch { return null; }
 }
+function readFragmentShare(): SharedPayload | null { return typeof window === "undefined" ? null : parseSharedFragment(window.location.hash); }
 function clearPendingShare() { try { sessionStorage.removeItem(PENDING_KEY); } catch { /* storage unavailable */ } }
 export function storePendingShare(payload: SharedPayload) { try { sessionStorage.setItem(PENDING_KEY, JSON.stringify({ ...payload, at: Date.now() })); } catch { /* storage unavailable */ } }
 
 export function CaptureForm({ shared }: { shared?: SharedPayload | null }) {
   // A signed-out share stored by ShareHandoff prefills the form after sign-in; reading is non-destructive (cleared only once saved).
-  const [initial, setInitial] = useState<SharedPayload | null>(() => shared ?? readPendingShare());
-  const [kind, setKind] = useState<"text" | "link">(() => (shared ?? readPendingShare())?.url ? "link" : "text"); const [busy, setBusy] = useState(false);
+  // An Apple Shortcut may hand the link over in the #fragment (never sent to the server). Prefill only; the user still taps Save.
+  const [initial, setInitial] = useState<SharedPayload | null>(() => shared ?? readPendingShare() ?? readFragmentShare());
+  const [kind, setKind] = useState<"text" | "link">(() => (shared ?? readPendingShare() ?? readFragmentShare())?.url ? "link" : "text"); const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<CaptureReply | null>(null); const [error, setError] = useState("");
   const [details, setDetails] = useState<{ busy: boolean; message: string }>({ busy: false, message: "" });
   const inFlight = useRef(false); const detailsInFlight = useRef(false); const formRef = useRef<HTMLFormElement>(null);
+  // Once the shared link is in the form, remove it from the address bar and history.
+  useEffect(() => { if (window.location.search || window.location.hash) window.history.replaceState(null, "", "/capture"); }, []);
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); if (inFlight.current) return; inFlight.current = true; setBusy(true); setError(""); setResult(null); setDetails({ busy: false, message: "" });
     const form = new FormData(event.currentTarget); const controller = new AbortController(); const timer = setTimeout(() => controller.abort(), 12_000);
@@ -49,8 +54,9 @@ export function CaptureForm({ shared }: { shared?: SharedPayload | null }) {
       const response = await fetch(`/api/capture/${current.memory.id}/details`, { method: "POST", credentials: "same-origin", cache: "no-store", signal: controller.signal });
       const body = await response.json() as { data: DetailsReply | null; error: { message: string } | null }; if (!response.ok || !body.data) throw new Error(body.error?.message || "Details are still unavailable.");
       const reply = body.data;
-      setResult({ ...current, memory: reply.memory, enrichment: reply.enrichment });
-      setDetails({ busy: false, message: reply.enrichment.status === "complete" ? "" : limitationText(reply.enrichment.status, reply.enrichment.reason) ?? "" });
+      setResult({ ...current, memory: reply.memory, enrichment: reply.enrichment, duplicate: current.duplicate || !!reply.merged });
+      setDetails({ busy: false, message: reply.merged ? "This is the same TikTok post you saved before, so REIBRY kept your earlier Memory and added anything new to it."
+        : reply.enrichment.status === "complete" ? "" : limitationText(reply.enrichment.status, reply.enrichment.reason) ?? "" });
     } catch (cause) { setDetails({ busy: false, message: cause instanceof Error && cause.name !== "AbortError" ? cause.message : "Getting details took too long. The link is still saved." }); }
     finally { clearTimeout(timer); detailsInFlight.current = false; }
   }

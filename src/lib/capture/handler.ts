@@ -63,7 +63,8 @@ export async function handleCaptureDetailsRequest(request: Request, id: string, 
       if (context.repository.ownerId !== context.userId) throw new AuthFailure("AUTH_REQUIRED");
       if (!context.enrichmentWriter) throw new MemoryRepositoryFailure("STORAGE_UNAVAILABLE");
       const result = await enrichSavedLink(itemId, context.repository, context.enrichmentWriter);
-      return { status: 200, data: { memory: result.memory, enrichment: result.enrichment }, error: null };
+      // merged: this share link was the same TikTok post as an earlier Memory, which is the one returned (the duplicate was removed).
+      return { status: 200, data: { memory: result.memory, enrichment: result.enrichment, merged: "mergedDuplicate" in result }, error: null };
     }, timeout);
   } catch (error) { if (error instanceof MemoryRepositoryFailure && error.code === "NOT_FOUND") return { status: 404, data: null, error: { code: "VALIDATION_ERROR", message: "Memory not found." } }; return failure(mapped(error)); }
 }
