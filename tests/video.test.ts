@@ -60,10 +60,11 @@ test("Muse Spark output is validated, clipped and stored without any speech fiel
   assert.ok(!("speech" in value));
   assert.throws(() => parseVisualAnalysis({ ...museOutput, speech: { heard_speech: false } }, "2026-10-31T08:00:00.000Z"), VideoContractError, "extra keys are rejected");
   const minimal = parseVisualAnalysis({ ...museOutput, visible_observations: [], scenes: [{ ...museOutput.scenes[0], motion: "", background: " " }] }, "2026-10-31T08:00:00.000Z");
-  assert.deepEqual(minimal.observations, ['0–5 s: not described background; solid red square centered; on-screen text "STEP 1 MIX"'], "a minimal clip restates Muse's own scene facts");
+  assert.deepEqual(minimal.observations, ['0–5 s: solid red square centered; on-screen text "STEP 1 MIX"'], "a minimal clip restates only Muse's own described scene facts");
   assert.equal(minimal.scenes[0].motion, "not described"); assert.equal(minimal.scenes[0].background, "not described");
   assert.throws(() => parseVisualAnalysis({ ...museOutput, scenes: [] }, "2026-10-31T08:00:00.000Z"), VideoContractError, "no scenes is still invalid");
-  assert.throws(() => parseVisualAnalysis({ ...museOutput, occasion_or_use_case: [{ suggestion: "x", basis: "spoken" }] }, "2026-10-31T08:00:00.000Z"), VideoContractError);
+  assert.deepEqual(parseVisualAnalysis({ ...museOutput, occasion_or_use_case: [{ suggestion: "x", basis: "spoken" }] }, "2026-10-31T08:00:00.000Z").occasions, [],
+    "an occasion with an invalid basis is dropped, never stored");
   const long = parseVisualAnalysis({ ...museOutput, visible_observations: ["x".repeat(900)] }, "2026-10-31T08:00:00.000Z"); assert.equal(long.observations[0].length, 240);
   const body = buildVisualRequest(mp4()) as unknown as { store: boolean; model: string; tools: unknown[]; text: { format: { strict: boolean; schema: { properties: Record<string, unknown> } } }; input: Array<{ content: Array<{ type: string; fps?: number; video_url?: string }> }> };
   assert.equal(body.store, false); assert.equal(body.model, "muse-spark-1.3"); assert.doesNotMatch(body.model, /contributor/); assert.deepEqual(body.tools, []);

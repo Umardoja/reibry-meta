@@ -24,7 +24,8 @@ export type VideoStore = {
 };
 export type VideoAnalyzers = {
   probe(bytes: Uint8Array): Promise<ProbedVideo>;
-  visual(bytes: Uint8Array): Promise<{ visual: VideoVisual; usage: MetaUsage | null }>;
+  /** normalizations: sanitized names of safe normalizations applied to a valid but minimal answer (see parseVisualAnalysisDetailed). */
+  visual(bytes: Uint8Array): Promise<{ visual: VideoVisual; usage: MetaUsage | null; normalizations?: string[] }>;
   extractSpeech(bytes: Uint8Array): Promise<Uint8Array>;
   transcribe(wav: Uint8Array): Promise<VideoTranscript>;
 };
@@ -68,12 +69,12 @@ export async function runVideoStep(memoryId: string, step: VideoStep, repository
   const path = await store.ownedPath(memoryId);
   if (!path) throw new MemoryRepositoryFailure("NOT_FOUND");
   await store.beginStep(memoryId, step);
-  let usage: MetaUsage | null = null; let failure: { code: VideoFailureCode; diagnostic: string | null } | null = null;
+  let usage: MetaUsage | null = null; let normalizations: string[] = []; let failure: { code: VideoFailureCode; diagnostic: string | null } | null = null;
   try {
     let bytes: Uint8Array;
     try { bytes = await store.download(path); } catch { throw new VideoStepFailure("media-unavailable"); }
     if (step === "visual") {
-      const result = await analyzers.visual(bytes); usage = result.usage;
+      const result = await analyzers.visual(bytes); usage = result.usage; normalizations = result.normalizations ?? [];
       await store.recordVisual(memoryId, result.visual);
     } else {
       const visual = memory.video.visual;
@@ -97,8 +98,10 @@ export async function runVideoStep(memoryId: string, step: VideoStep, repository
     // Sanitized reason only (e.g. "http-503", "schema:scene end"); provider content is never kept.
     const diagnostic = (error as { diagnostic?: unknown }).diagnostic;
     failure = { code, diagnostic: typeof diagnostic === "string" ? diagnostic : null };
+    // A rejected answer is still billed: keep its token usage when the provider reported it.
+    const failedUsage = (error as { usage?: MetaUsage | null }).usage; if (failedUsage) usage = failedUsage;
   }
-  return { memory: await repository.read(memoryId), usage, failure };
+  return { memory: await repository.read(memoryId), usage, normalizations, failure };
 }
 
 export type { MemoryVideo };

@@ -86,6 +86,8 @@ async function route(request: Request, handle: (origin: string, factory: (signal
   // Sanitized server log for a failed analysis step: failure code and diagnostic only (no IDs, content or provider bodies).
   const failed = (result.data as { failure?: { code: string; diagnostic: string | null } | null } | null)?.failure;
   if (failed) console.warn(`[video-analysis] step failed: code=${failed.code} diagnostic=${failed.diagnostic ?? "none"}`);
+  const notes = (result.data as { normalizations?: string[] } | null)?.normalizations;
+  if (notes?.length) console.info(`[video-analysis] visual answer normalized: ${notes.join(",")}`);
   const response = NextResponse.json({ data: result.data, error: result.error }, { status: result.status, headers: videoPrivateHeaders });
   return applyAuthCookies(response, result.status === 401 ? jar.clear() : result.error ? [] : jar.writes(), origin.startsWith("https:"));
 }

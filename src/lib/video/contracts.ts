@@ -46,7 +46,8 @@ function number(value: unknown, min: number, max: number, what: string) {
 }
 const clip = (value: string, max: number) => value.trim().replace(/\s+/g, " ").slice(0, max);
 /** Scene background/motion Muse left blank is recorded as "not described", never guessed. */
-const blank = (value: unknown, max: number) => { if (value !== undefined && typeof value !== "string") throw new VideoContractError("Invalid scene text."); return value?.trim() ? clip(value, max) : "not described"; };
+export const NOT_DESCRIBED = "not described";
+const blank = (value: unknown, max: number) => { if (value !== undefined && typeof value !== "string") throw new VideoContractError("Invalid scene text."); return value?.trim() ? clip(value, max) : NOT_DESCRIBED; };
 
 /** JSON schema Muse Spark must follow. There is deliberately no speech field. */
 export const visualAnalysisSchema = (() => {
@@ -61,31 +62,53 @@ export const visualAnalysisSchema = (() => {
       uncertain_or_not_visible: list } } as const;
 })();
 
-/** Converts Muse Spark's structured output into the stored shape, clipping to the database bounds and rejecting anything malformed. */
-export function parseVisualAnalysis(output: unknown, analyzedAt: string, fps = VIDEO_FPS): VideoVisual {
+/** Sanitized names of the safe normalizations applied to a valid but minimal Muse answer (never content). */
+export type VisualNormalization = "background-not-described" | "motion-not-described" | "observations-restated-from-scenes" | "interpretation-dropped" | "occasion-dropped";
+
+/**
+ * Converts Muse Spark's structured output into the stored shape, clipping to the database bounds. A valid but minimal answer (one still
+ * scene, no motion, no background, no objects, no separate observation list) is accepted, and every normalization is reported. Nothing is
+ * ever invented: blanks become "not described", incomplete optional items are dropped, and observations are only ever restated from facts
+ * Muse itself put in its scenes. Malformed output (no scenes, wrong types, impossible or reversed timestamps, nothing observable) is rejected.
+ */
+export function parseVisualAnalysisDetailed(output: unknown, analyzedAt: string, fps = VIDEO_FPS): { visual: VideoVisual; normalizations: VisualNormalization[] } {
+  const notes = new Set<VisualNormalization>();
   const body = record(output, "visual analysis");
   exactKeys(body, ["scenes", "visible_observations", "interpretations", "occasion_or_use_case", "uncertain_or_not_visible"], "visual analysis");
   if (!Array.isArray(body.scenes) || !body.scenes.length) throw new VideoContractError("Invalid scenes.");
+  const strings = (value: unknown, max: number, length: number) => (Array.isArray(value) ? value : []).filter((item): item is string => typeof item === "string" && !!item.trim()).slice(0, max).map(item => clip(item, length));
   const scenes = body.scenes.slice(0, 12).map(value => {
     const scene = record(value, "scene");
-    return { startSeconds: number(scene.approx_start_seconds, 0, 60, "scene start"), endSeconds: number(scene.approx_end_seconds, 0, 60, "scene end"),
-      background: blank(scene.background, 120),
-      objects: (Array.isArray(scene.visible_objects) ? scene.visible_objects : []).filter((item): item is string => typeof item === "string" && !!item.trim()).slice(0, 8).map(item => clip(item, 160)),
-      onScreenText: (Array.isArray(scene.on_screen_text) ? scene.on_screen_text : []).filter((item): item is string => typeof item === "string" && !!item.trim()).slice(0, 6).map(item => clip(item, 120)),
-      motion: blank(scene.motion, 200) };
+    const startSeconds = number(scene.approx_start_seconds, 0, 60, "scene start"); const endSeconds = number(scene.approx_end_seconds, 0, 60, "scene end");
+    if (endSeconds < startSeconds) throw new VideoContractError("Invalid scene times.");
+    const background = blank(scene.background, 120); const motion = blank(scene.motion, 200);
+    if (background === NOT_DESCRIBED) notes.add("background-not-described"); if (motion === NOT_DESCRIBED) notes.add("motion-not-described");
+    return { startSeconds, endSeconds, background, objects: strings(scene.visible_objects, 8, 160), onScreenText: strings(scene.on_screen_text, 6, 120), motion };
   });
-  const list = (value: unknown, max: number, length: number) => (Array.isArray(value) ? value : []).filter((item): item is string => typeof item === "string" && !!item.trim()).slice(0, max).map(item => clip(item, length));
-  // A very simple clip can come back with every fact inside its scenes and no separate observations; restate Muse's own scene facts
-  // rather than rejecting a valid analysis (nothing beyond what Muse reported is added).
-  let observations = list(body.visible_observations, 20, 240);
-  if (!observations.length) observations = scenes.map(scene => clip(`${scene.startSeconds}–${scene.endSeconds} s: ${scene.background} background${scene.objects.length ? `; ${scene.objects.join(", ")}` : ""}${scene.onScreenText.length ? `; on-screen text "${scene.onScreenText.join(" / ")}"` : ""}`, 240));
-  const interpretations = (Array.isArray(body.interpretations) ? body.interpretations : []).slice(0, 6).map(value => {
-    const item = record(value, "interpretation"); return { claim: clip(text(item.claim, 2_000, "interpretation"), 240), basedOn: clip(text(item.based_on, 2_000, "interpretation basis"), 240) }; });
-  const occasions = (Array.isArray(body.occasion_or_use_case) ? body.occasion_or_use_case : []).slice(0, 6).map(value => {
-    const item = record(value, "occasion"); if (item.basis !== "visible" && item.basis !== "inferred") throw new VideoContractError("Invalid occasion.");
-    return { suggestion: clip(text(item.suggestion, 2_000, "occasion"), 120), basis: item.basis as "visible" | "inferred" }; });
-  return { model: VIDEO_VISUAL_MODEL, fps, analyzedAt, scenes, observations, interpretations, gaps: list(body.uncertain_or_not_visible, 10, 240), occasions };
+  let observations = strings(body.visible_observations, 20, 240);
+  if (!observations.length) {
+    // Restate only what Muse described inside its scenes; a "not described" placeholder is never turned into an observation.
+    observations = scenes.flatMap(scene => {
+      const facts = [scene.background !== NOT_DESCRIBED ? `${scene.background} background` : "", scene.objects.join(", "),
+        scene.onScreenText.length ? `on-screen text "${scene.onScreenText.join(" / ")}"` : "", scene.motion !== NOT_DESCRIBED ? scene.motion : ""].filter(Boolean);
+      return facts.length ? [clip(`${scene.startSeconds}–${scene.endSeconds} s: ${facts.join("; ")}`, 240)] : [];
+    });
+    if (!observations.length) throw new VideoContractError("Invalid observations.");
+    notes.add("observations-restated-from-scenes");
+  }
+  // Interpretations and occasions are optional inferences: an incomplete one is dropped, never repaired or promoted to an observation.
+  const interpretations = (Array.isArray(body.interpretations) ? body.interpretations : []).slice(0, 6).flatMap(value => {
+    const item = record(value, "interpretation");
+    if (typeof item.claim !== "string" || !item.claim.trim() || typeof item.based_on !== "string" || !item.based_on.trim()) { notes.add("interpretation-dropped"); return []; }
+    return [{ claim: clip(item.claim, 240), basedOn: clip(item.based_on, 240) }]; });
+  const occasions = (Array.isArray(body.occasion_or_use_case) ? body.occasion_or_use_case : []).slice(0, 6).flatMap(value => {
+    const item = record(value, "occasion");
+    if ((item.basis !== "visible" && item.basis !== "inferred") || typeof item.suggestion !== "string" || !item.suggestion.trim()) { notes.add("occasion-dropped"); return []; }
+    return [{ suggestion: clip(item.suggestion, 120), basis: item.basis as "visible" | "inferred" }]; });
+  return { visual: { model: VIDEO_VISUAL_MODEL, fps, analyzedAt, scenes, observations, interpretations, gaps: strings(body.uncertain_or_not_visible, 10, 240), occasions },
+    normalizations: [...notes] };
 }
+export function parseVisualAnalysis(output: unknown, analyzedAt: string, fps = VIDEO_FPS): VideoVisual { return parseVisualAnalysisDetailed(output, analyzedAt, fps).visual; }
 
 /** Converts a Muse Voice Transcribe response into the stored shape. An empty transcript is valid (silent audio). */
 export function parseTranscription(body: unknown): VideoTranscript {

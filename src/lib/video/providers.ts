@@ -4,15 +4,15 @@ import "server-only";
 // docs/meta/VIDEO_MEMORY_INTEGRATION.md. Provider error bodies are never surfaced or logged.
 import { metaConfig, type MetaClientDependencies } from "../ai/meta/client.ts";
 import type { MetaUsage } from "../ai/meta/contracts.ts";
-import { parseTranscription, parseVisualAnalysis, VIDEO_FPS, VIDEO_SPEECH_MODEL, VIDEO_VISUAL_MODEL, visualAnalysisSchema, VideoContractError,
-  type VideoFailureCode, type VideoTranscript, type VideoVisual } from "./contracts.ts";
+import { parseTranscription, parseVisualAnalysisDetailed, VIDEO_FPS, VIDEO_SPEECH_MODEL, VIDEO_VISUAL_MODEL, visualAnalysisSchema, VideoContractError,
+  type VideoFailureCode, type VideoTranscript, type VideoVisual, type VisualNormalization } from "./contracts.ts";
 
 export const VIDEO_VISUAL_OUTPUT_TOKENS = 3_000;
 const RESPONSES = "https://api.meta.ai/v1/responses";
 const TRANSCRIBE = "https://api.meta.ai/v1/asr/transcribe";
 /** diagnostic: a sanitized reason (HTTP status, envelope state, which schema field failed). Never provider content. */
-export class VideoProviderFailure extends Error { code: VideoFailureCode; diagnostic: string | null;
-  constructor(code: VideoFailureCode, diagnostic: string | null = null) { super(code); this.code = code; this.diagnostic = diagnostic; } }
+export class VideoProviderFailure extends Error { code: VideoFailureCode; diagnostic: string | null; usage: MetaUsage | null;
+  constructor(code: VideoFailureCode, diagnostic: string | null = null, usage: MetaUsage | null = null) { super(code); this.code = code; this.diagnostic = diagnostic; this.usage = usage; } }
 /** "Invalid scene end." -> "schema:scene end": names the failing field only. */
 const schemaDiagnostic = (error: Error) => `schema:${error.message.replace(/^Invalid /, "").replace(/\.$/, "").slice(0, 40)}`;
 export type VideoProviderDependencies = Pick<MetaClientDependencies, "env" | "fetch">;
@@ -50,29 +50,32 @@ export function buildVisualRequest(video: Uint8Array) {
 }
 
 export async function analyzeVideoVisual(video: Uint8Array, signal: AbortSignal, dependencies: VideoProviderDependencies, now = () => new Date(), timeoutMs = 50_000):
-  Promise<{ visual: VideoVisual; usage: MetaUsage | null }> {
+  Promise<{ visual: VideoVisual; usage: MetaUsage | null; normalizations: VisualNormalization[] }> {
   const body = await send(RESPONSES, { method: "POST", headers: { Authorization: `Bearer ${key(dependencies.env)}`, "Content-Type": "application/json", Accept: "application/json" },
     body: JSON.stringify(buildVisualRequest(video)) }, signal, timeoutMs, dependencies.fetch);
-  if (body.status !== "completed" || body.incomplete_details) throw new VideoProviderFailure("invalid-provider-output", `status-${String(body.status).slice(0, 20)}${body.incomplete_details ? "-incomplete" : ""}`);
-  if (body.store !== false || body.model !== VIDEO_VISUAL_MODEL) throw new VideoProviderFailure("invalid-provider-output", body.store !== false ? "store-not-false" : "model-mismatch");
-  const output = Array.isArray(body.output) ? body.output : [];
-  if (output.some(item => item && typeof item === "object" && (item as Record<string, unknown>).type === "message" &&
-    Array.isArray((item as Record<string, unknown>).content) && ((item as Record<string, unknown>).content as Array<Record<string, unknown>>).some(part => part?.type === "refusal")))
-    throw new VideoProviderFailure("invalid-provider-output", "refusal");
-  const text = output.filter(item => item && typeof item === "object" && (item as Record<string, unknown>).type === "message")
-    .flatMap(item => ((item as Record<string, unknown>).content as Array<Record<string, unknown>> | undefined) ?? [])
-    .filter(part => part?.type === "output_text" && typeof part.text === "string").map(part => part.text as string).join("");
-  let visual: VideoVisual;
-  try { visual = parseVisualAnalysis(JSON.parse(text), now().toISOString()); }
-  catch (error) {
-    if (error instanceof SyntaxError) throw new VideoProviderFailure("invalid-provider-output", text ? "output-json" : "output-empty");
-    if (error instanceof VideoContractError) throw new VideoProviderFailure("invalid-provider-output", schemaDiagnostic(error));
-    throw error;
-  }
+  // Usage is read first so a rejected (but billed) answer is still measured.
   const raw = body.usage as Record<string, unknown> | undefined;
   const usage = raw && [raw.input_tokens, raw.output_tokens, raw.total_tokens].every(Number.isSafeInteger)
     ? { inputTokens: raw.input_tokens as number, outputTokens: raw.output_tokens as number, totalTokens: raw.total_tokens as number } : null;
-  return { visual, usage };
+  const fail = (diagnostic: string) => new VideoProviderFailure("invalid-provider-output", diagnostic, usage);
+  // Incomplete means status "incomplete" or a non-empty incomplete_details; an empty {} beside "completed" is not a truncation.
+  const details = body.incomplete_details;
+  const incomplete = details !== null && details !== undefined && !(typeof details === "object" && !Array.isArray(details) && Object.keys(details).length === 0);
+  if (body.status !== "completed" || incomplete) throw fail(`status-${String(body.status).slice(0, 20)}${incomplete ? "-incomplete" : ""}`);
+  if (body.store !== false || body.model !== VIDEO_VISUAL_MODEL) throw fail(body.store !== false ? "store-not-false" : "model-mismatch");
+  const output = Array.isArray(body.output) ? body.output : [];
+  if (output.some(item => item && typeof item === "object" && (item as Record<string, unknown>).type === "message" &&
+    Array.isArray((item as Record<string, unknown>).content) && ((item as Record<string, unknown>).content as Array<Record<string, unknown>>).some(part => part?.type === "refusal")))
+    throw fail("refusal");
+  const text = output.filter(item => item && typeof item === "object" && (item as Record<string, unknown>).type === "message")
+    .flatMap(item => ((item as Record<string, unknown>).content as Array<Record<string, unknown>> | undefined) ?? [])
+    .filter(part => part?.type === "output_text" && typeof part.text === "string").map(part => part.text as string).join("");
+  try { return { ...parseVisualAnalysisDetailed(JSON.parse(text), now().toISOString()), usage }; }
+  catch (error) {
+    if (error instanceof SyntaxError) throw fail(text ? "output-json" : "output-empty");
+    if (error instanceof VideoContractError) throw fail(schemaDiagnostic(error));
+    throw error;
+  }
 }
 
 export async function transcribeSpeech(wav: Uint8Array, signal: AbortSignal, dependencies: VideoProviderDependencies, timeoutMs = 30_000): Promise<VideoTranscript> {

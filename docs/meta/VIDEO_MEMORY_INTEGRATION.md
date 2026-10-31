@@ -213,3 +213,90 @@ There is no deployment, no background queue, and no download of TikTok, Instagra
 5. **Transcription:** auto-detected language misheard the product name and repeated two words. Consider passing `keywords` (for example "REIBRY") or a language hint taken from user settings.
 6. **Request size:** the 20 MB limit relies on the app reading the body itself. A deployment platform's own request-body limit must be at least 20 MB, or uploads should go direct to Storage through a signed upload issued only after server-side checks. The latter would need a reviewed design, because users currently cannot upload directly.
 7. **Test data:** the synthetic video Memories (the analysed clip and the failed 4 s clip) remain in User A's development data. They are recorded in `.auth/stage12f2/manifest.json`. The deletion probe was deleted.
+
+## 6. Stage 12I-2C: short-video analysis reliability
+
+### What the 12I-2B failure was, and what can be known
+
+- The 4 s PICNIC LIST clip's visual step failed with `invalid-provider-output` **before** sanitized reasons existed.
+- The server log recorded only HTTP 200, and no provider content is ever kept, so **the exact field cannot be recovered**.
+- The parser in use at that time rejected several valid-but-minimal forms that a one-scene still clip plausibly produces:
+  - an empty observations list;
+  - a blank `motion`;
+  - a blank `background`;
+  - an interpretation with an empty `based_on`;
+  - any non-null `incomplete_details`, even `{}`.
+- The single authorized retry succeeded with a fully formed answer and **no** normalization was applied. Muse's answers vary, so this retry neither reproduced nor confirmed the original cause.
+
+### Changes
+
+- **`parseVisualAnalysisDetailed`** accepts a valid minimal answer and reports each **normalization** as a sanitized name:
+  - `background-not-described`, `motion-not-described`;
+  - `observations-restated-from-scenes`;
+  - `interpretation-dropped`, `occasion-dropped`.
+- **Nothing is invented:**
+  - a blank is stored as "not described";
+  - incomplete optional inferences are dropped, and never promoted to observations;
+  - observations are restated **only** from facts Muse put in its scenes, and a "not described" placeholder never becomes an observation.
+- **Still rejected:**
+  - a scene with nothing observable;
+  - **end time before start time** (new);
+  - out-of-range or wrongly typed times;
+  - missing or extra top-level fields;
+  - no scenes;
+  - invalid JSON;
+  - a refusal;
+  - real incompleteness (status `incomplete`, or non-empty `incomplete_details`).
+- **Every rejection** names its stage or field (`schema:scene times`, `schema:observations`, `refusal`, `status-…`, `output-json`, `http-…`) and **keeps the billed token usage**.
+- **The step response and the server log** carry the failure code and diagnostic, or the normalization names. Never content or IDs.
+- **No migration.** The stored shape and the database validation are unchanged.
+
+### Tests (mock only, run before the live request)
+
+- `tests/video-minimal.test.ts`, 7 tests:
+  - one static 4 s scene;
+  - no motion;
+  - missing background;
+  - missing object categories;
+  - nothing observable (rejected);
+  - reversed timestamps (rejected);
+  - wrong types, missing fields and a forged `transcript` key (rejected);
+  - incomplete inferences dropped, never promoted;
+  - an exact diagnostic for incomplete, refusal, invalid JSON, empty, field-level schema and reversed-time failures, with usage kept;
+  - the full 4 s journey: rejected answer → nothing stored and the video kept → bounded retry succeeds → no-speech audio gives "No speech was transcribed" → the result survives a fresh read;
+  - the attempt limit: two rejected answers close the step, the video stays, nothing is stored.
+- Two 12I-2B assertions were updated to the new rule: a minimal observation no longer contains "not described", and an occasion with an invalid basis is dropped rather than failing the whole answer.
+
+### Single live retest (localhost Memory page, 390 px)
+
+- **Preconditions:**
+  - the clip is owned by User A and its object exists;
+  - `failed`, with 1 of 2 visual attempts used;
+  - `ffmpeg` and `ffprobe` are present;
+  - the linked project was re-confirmed;
+  - cost bound ≤ $0.031.
+- No attempt count was reset.
+
+| Check | Result |
+| --- | --- |
+| Before analysis | The saved video and its failed state survived reload; Retry was shown |
+| Double click on **Retry analysis** | Exactly **one** visual request |
+| Visual request | HTTP 200 in **10.9 s**; provider `completed`; accepted with **no normalizations**; **630 in / 948 out tokens ≈ $0.0048** |
+| Persisted | `pending`, visual attempts 2, visual findings stored |
+| UI states | Analyzing visual details… → **Visual details ready · speech not transcribed yet** |
+| After reload | The visual results persist, and **Transcribe speech** is offered |
+
+**What Muse saw:**
+
+- A bright yellow frame, the black text "PICNIC LIST" near the top, and a dark purple rectangle centred below it.
+- "No other objects, people, or backgrounds are visible."
+- "No visible motion or scene change."
+- An interpretation, labelled as such: "appears to be a title card…".
+- The scene end was given as about 3 s; the clip is 4 s (an approximate time).
+
+**Speech was not live-tested in this stage.** The page automatically started the speech step, and the test harness blocked that one request in the browser before it reached the server, because no transcription call was authorized.
+
+- The clip has a pure tone with no words. The no-speech path ("No speech was transcribed.") is verified with a mock transcript only.
+- The clip remains `pending`, with visual results and an available **Transcribe speech** step.
+
+**Spend in this stage:** one Muse Spark video request, ≈ $0.0048 (ceiling $0.05). No other model calls.
