@@ -6,6 +6,8 @@ import { canonicalOrigin } from "../auth/origin.ts";
 import { AuthFailure, missingSession, providerFailure } from "../auth/policy.ts";
 import { cookieJar, isAuthCookie } from "../supabase/cookies.ts";
 import { createUserSupabaseClient } from "../supabase/server.ts";
+import { createTrustedVideoClient } from "../supabase/trusted-server.ts";
+import { removeVideoObject } from "../video/storage.ts";
 import { handleMemoryRequest, memoryPrivateHeaders, type MemoryOperation } from "./handler.ts";
 import { createSupabaseMemoryRepository } from "./supabase-repository.ts";
 
@@ -20,7 +22,7 @@ export async function memoryApiRoute(operation: MemoryOperation, request: Reques
     const { data, error } = await client.auth.getUser();
     if (error) { if (missingSession(error)) throw new AuthFailure("AUTH_REQUIRED"); throw providerFailure(error); }
     if (!data.user?.id) throw new AuthFailure("AUTH_REQUIRED");
-    return { userId: data.user.id, repository: createSupabaseMemoryRepository(client, data.user.id) };
+    return { userId: data.user.id, repository: createSupabaseMemoryRepository(client, data.user.id, { removeVideoObject: path => removeVideoObject(createTrustedVideoClient(signal), path) }) };
   }, origin);
   const response = NextResponse.json({ data: result.data, error: result.error }, { status: result.status, headers: memoryPrivateHeaders });
   return applyAuthCookies(response, result.status === 401 ? jar.clear() : result.error ? [] : jar.writes(), origin.startsWith("https:"));

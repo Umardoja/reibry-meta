@@ -5,7 +5,11 @@ import type { MemorySourceType, MemoryStatus } from "../memory/contracts.ts";
 export const SEARCH_QUERY_MAX = 200;
 export const SEARCH_RESULT_MAX = 20;
 export const SEARCH_CANDIDATE_MAX = 250;
-export type EvidenceField = "title" | "note" | "metadata" | "hostname";
+export type EvidenceField = "title" | "note" | "metadata" | "hostname" | "video";
+/** Analysed-video evidence, already bounded for the model. Visual lines come only from Muse Spark video input; transcript turns only from
+ * Muse Voice Transcribe; interpretations are inferences. analyzed=false means the video is saved but not (fully) analysed yet. */
+export type RetrievalVideoEvidence = { analyzed: boolean; visual: string[]; transcript: Array<{ startSeconds: number; endSeconds: number; text: string }>;
+  speechTranscribed: boolean; hasAudio: boolean; interpretations: string[]; gaps: string[] };
 export type RetrievalItem = {
   memoryId: string;
   memoryHref: string;
@@ -18,6 +22,8 @@ export type RetrievalItem = {
   match: { reason: string; score: number; fields: EvidenceField[] };
   /** Captured-link details with their origin: provider/page metadata vs the user's own note. Never a transcript or visual analysis. */
   sourceDetails?: { platform: string | null; creator: string | null; caption: string | null; userNote: string | null } | null;
+  /** Video Memories only. */
+  video?: RetrievalVideoEvidence | null;
   /** When the Memory was saved, so "the course I just saved" can be resolved by recency. */
   savedAt?: string;
   /** Home only: how REIBRY resolved that the user means this Memory ("the second one", "the Mosh one", "just saved"). */

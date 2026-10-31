@@ -538,3 +538,24 @@
 - Browser: 3/3 (automatic details request, honest final state, no extra request when already enriched).
 - Validation: lint PASS; typecheck PASS; 241/241 tests PASS; build PASS; `git diff --check` PASS.
 - Push status: NOT PUSHED.
+
+## Stage 12I-2B - Video-to-Memory integration
+
+- **Date:** 2026-10-31 (Africa/Lagos).
+- **Parent:** `8649466` (the proof-of-concept report commit on top of `50ee8c6`). Unrelated untracked and ignored files were preserved and not staged.
+- **Migration:** `20261031000000_video_memories.sql`, applied once after a dry run that listed only it. It adds:
+  - `video` as a Memory type, with the owner insert policy narrowed to `text` and `link`;
+  - `memory_videos`, with forced RLS, owner SELECT only, and analysis state, results and provenance;
+  - five `service_role`-only `SECURITY DEFINER` writers and four non-client validation helpers;
+  - a private `memory-videos` bucket (20 MB, `video/mp4`).
+- **Storage policies:** the planned owner policies on `storage.objects` were dropped before the push. Hosted read-only checks showed the migration role cannot create policies there. Users have no Storage API access; the server proves ownership through RLS before using its key.
+- **Verification:**
+  - local: 11 migrations and 8/8 SQL suites;
+  - hosted, read-only: history has 11 versions, the ACLs and RLS are as designed, the bucket is private with 0 Storage policies, `anon` can execute 0 public functions, and 12 tables have forced RLS.
+- **Live:** 33/33 acceptance checks.
+  - The visuals were recognised by Muse Spark and the narration by Voice Transcribe, with the two kept separate.
+  - The results persisted, search hit both channels, B was isolated, the Home answer was cited, and deletion removed the Storage object.
+  - A browser run's second Muse call was rejected as unverifiable output; the video was kept and the page showed Retry.
+- **Spend:** $0.015 measured, ≤ $0.046 worst case.
+- **Validation:** lint has 0 errors (4 earlier warnings); typecheck PASS; 269/269 tests; build PASS; `git diff --check` PASS; no secrets in the browser bundles.
+- **Push status:** NOT PUSHED.

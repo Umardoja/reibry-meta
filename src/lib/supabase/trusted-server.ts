@@ -35,3 +35,12 @@ export function createTrustedEnrichmentClient(signal: AbortSignal,
   dependencies: TrustedSupabaseDependencies = { env: process.env, fetch }): SupabaseClient {
   return trustedClient(signal, dependencies, () => new Error("ENRICHMENT_NOT_CONFIGURED"));
 }
+
+/**
+ * Creates an elevated client solely for the trusted video RPCs and for uploading an already-validated video into the
+ * verified user's own folder. Owner reads and deletes of videos use the user's own session, never this client.
+ */
+export function createTrustedVideoClient(signal: AbortSignal,
+  dependencies: TrustedSupabaseDependencies = { env: process.env, fetch }): SupabaseClient {
+  return trustedClient(signal, dependencies, () => new Error("VIDEO_NOT_CONFIGURED"));
+}

@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { verifiedPageUser } from "@/lib/auth/server";
 import { CaptureForm, type SharedPayload } from "@/components/capture/capture-form";
 import { ShareHandoff } from "@/components/capture/share-handoff";
+import { VideoCapture } from "@/components/video/video-capture";
 import { Container } from "@/components/ui/primitives";
 export const dynamic = "force-dynamic";
 
@@ -19,5 +20,5 @@ export default async function CapturePage({ searchParams }: { searchParams: Prom
   let verified = false; try { verified = !!await verifiedPageUser(); } catch { /* Fail closed. */ }
   if (!verified) { if (shared) return <Container><ShareHandoff shared={shared} /></Container>; redirect("/auth?next=/capture"); }
   return <Container><header className="section-heading"><p className="eyebrow">Capture</p><h1>Save a thought, link, or plan.</h1>
-    <p>Share or paste a link and get back to what you were doing. REIBRY saves it first, then adds whatever details the platform shares.</p></header><CaptureForm shared={shared} /></Container>;
+    <p>Share or paste a link and get back to what you were doing. REIBRY saves it first, then adds whatever details the platform shares.</p></header><CaptureForm shared={shared} /><VideoCapture /></Container>;
 }

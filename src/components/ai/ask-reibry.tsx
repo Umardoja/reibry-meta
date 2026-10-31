@@ -44,7 +44,7 @@ export function AskReibry({ variant = "ask" }: { variant?: "ask" | "home" }) {
       <p>{view.result.answer}</p>
       {view.result.citations.length > 0 && <section aria-labelledby="ask-citations"><h3 id="ask-citations">Saved evidence</h3><ul>
         {view.result.citations.map(citation => <li key={citation.memory_id}><a href={citation.memory_href}>{citation.title}</a>
-          {citation.evidence_limit === "metadata-only-link" && <span> — metadata only</span>}</li>)}</ul></section>}
+          {citation.evidence_limit === "metadata-only-link" && <span> — metadata only</span>}{citation.evidence_limit === "analyzed-video" && <span> — analysed video</span>}{citation.evidence_limit === "video-not-analyzed" && <span> — video not analysed yet</span>}</li>)}</ul></section>}
       {view.result.action_proposals.length > 0 && <ActionProposalReview proposals={view.result.action_proposals} onChanged={proposal => setView(current => current.result ? { ...current, result: { ...current.result, action_proposals: current.result.action_proposals.map(item => item.id === proposal.id ? proposal : item) } } : current)} />}
       {view.result.proposed_next_steps.length > 0 && view.result.action_proposals.length === 0 && <p className="auth-error" role="alert">No model suggestion had enough owned evidence to become a proposal.</p>}
       {!view.result.provider_called && <p className="field-hint">Muse Spark was not called because no matching stored evidence was found.</p>}

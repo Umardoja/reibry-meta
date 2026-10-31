@@ -1,6 +1,7 @@
 // Adapted from original REIBRY types/reibry.ts and api/contracts.ts.
 // Source 76d3494465bab43a5051498e90b9a486a65312b9; original contributors retain attribution.
-export type MemorySourceType = "text" | "link";
+import { decodeMemoryVideo, type MemoryVideo } from "../video/contracts.ts";
+export type MemorySourceType = "text" | "link" | "video";
 export type MemoryStatus = "processing" | "complete" | "partial" | "failed";
 export type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
 
@@ -15,6 +16,8 @@ export interface Memory {
   metadata: Record<string, JsonValue>;
   createdAt: string;
   updatedAt: string;
+  /** Video Memories only: the owner-readable, server-written analysis state (never the storage path). */
+  video?: MemoryVideo | null;
 }
 export type NewTextMemory = { title: string; rawText: string };
 export type NewMemory = Pick<Memory, "title" | "sourceType" | "sourceUrl" | "rawText" | "analysisStatus" | "metadata">;
@@ -76,7 +79,7 @@ export function decodeMemory(value: unknown): Memory {
   const row = object(value);
   const sourceType = row.source_type;
   const status = row.analysis_status;
-  if (sourceType !== "text" && sourceType !== "link") throw new MemoryContractError("Invalid Memory source type.");
+  if (sourceType !== "text" && sourceType !== "link" && sourceType !== "video") throw new MemoryContractError("Invalid Memory source type.");
   if (!["processing", "complete", "partial", "failed"].includes(String(status))) throw new MemoryContractError("Invalid Memory status.");
   const iso = (input: unknown) => {
     if (typeof input !== "string" || !Number.isFinite(Date.parse(input))) throw new MemoryContractError("Invalid Memory timestamp.");
@@ -85,16 +88,22 @@ export function decodeMemory(value: unknown): Memory {
   const sourceUrl = row.source_url === null ? null : boundedText(row.source_url, "Source URL", 2_048);
   if (sourceUrl && !["http:", "https:"].includes(new URL(sourceUrl).protocol)) throw new MemoryContractError("Invalid Memory source URL.");
   const rawText = row.raw_text === null ? null : boundedText(row.raw_text, "Memory text", 50_000);
-  if ((sourceType === "text" && rawText === null) || (sourceType === "link" && sourceUrl === null)) throw new MemoryContractError("Invalid Memory source.");
+  if ((sourceType === "text" && rawText === null) || (sourceType === "link" && sourceUrl === null) || (sourceType === "video" && sourceUrl !== null)) throw new MemoryContractError("Invalid Memory source.");
+  // PostgREST embeds the one-to-one memory_videos row as an object (or null); tolerate a single-element array as well.
+  const embedded = Array.isArray(row.memory_videos) ? row.memory_videos[0] ?? null : row.memory_videos ?? null;
+  let video: MemoryVideo | null | undefined;
+  if (sourceType === "video") { try { video = embedded ? decodeMemoryVideo(embedded) : null; } catch { throw new MemoryContractError("Invalid video analysis."); } }
   return {
     id: memoryId(row.id), userId: memoryId(row.user_id), title: boundedText(row.title, "Title", 200),
     sourceType, sourceUrl, rawText, analysisStatus: status as MemoryStatus,
     metadata: jsonObject(row.metadata), createdAt: iso(row.created_at), updatedAt: iso(row.updated_at),
+    ...(video !== undefined ? { video } : {}),
   };
 }
 export function serializeMemory(memory: Memory): Memory {
   return { id: memory.id, userId: memory.userId, title: memory.title, sourceType: memory.sourceType,
     sourceUrl: memory.sourceUrl, rawText: memory.rawText, analysisStatus: memory.analysisStatus,
     metadata: JSON.parse(JSON.stringify(memory.metadata)) as Record<string, JsonValue>,
-    createdAt: memory.createdAt, updatedAt: memory.updatedAt };
+    createdAt: memory.createdAt, updatedAt: memory.updatedAt,
+    ...(memory.video !== undefined ? { video: memory.video === null ? null : JSON.parse(JSON.stringify(memory.video)) as MemoryVideo } : {}) };
 }

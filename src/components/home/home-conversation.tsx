@@ -30,8 +30,10 @@ function shownMemoryIds(turns: Turn[]) {
 
 function EvidenceList({ response }: { response: HomeResponse }) {
   const items = response.groundedAnswer?.citations.map(item => ({ id: item.memory_id, href: item.memory_href, title: item.title,
-    excerpt: item.evidence_limit === "metadata-only-link" ? "Metadata-only saved link. No webpage or transcript content was used." : null,
-    reason: item.evidence_limit === "metadata-only-link" ? "metadata only" : "stored evidence" })) ?? response.memories.map(item => ({ id: item.memoryId, href: item.memoryHref,
+    excerpt: item.evidence_limit === "metadata-only-link" ? "Metadata-only saved link. No webpage or transcript content was used."
+      : item.evidence_limit === "analyzed-video" ? "Your video, analysed: visuals by Muse Spark, speech by Muse Voice Transcribe."
+      : item.evidence_limit === "video-not-analyzed" ? "Saved video, not analysed yet: only its title and your note were used." : null,
+    reason: item.evidence_limit === "metadata-only-link" ? "metadata only" : item.evidence_limit === "analyzed-video" ? "analysed video" : "stored evidence" })) ?? response.memories.map(item => ({ id: item.memoryId, href: item.memoryHref,
       title: item.displayTitle, excerpt: item.storedExcerpt, reason: `${item.match.reason}${item.sourceType === "link" ? " Link evidence is metadata only." : ""}` }));
   if (!items.length) return null;
   return <div className="home-option-list">{items.map(item => <article className="home-option" key={item.id}><span className="home-option-copy"><strong>{item.title}</strong>
