@@ -304,3 +304,35 @@ All of this stays in the backend and its tests.
 ## R. Commit
 
 The local commit SHA is reported in the hand-off message. It was not pushed or deployed.
+
+## Stage 12J-3A correction: mobile app shell restored
+
+**Owner direction:** REIBRY is a mobile application, including when it's viewed on a laptop. The desktop sidebar, wide content and multi-column grids described in sections E–G above are **withdrawn**.
+
+**What was restored:**
+
+- `src/components/layout/app-shell.tsx` and `navigation.tsx` are byte-identical to `08bb4dd`: the original header and menu, and the five-tab bottom bar (Home · Memories · Capture · Plans · Account).
+- The 08bb4dd 430 px app column, centred at every width.
+- In `atlas.css`, the shell overrides were removed: the 640/760 px widening, the 960 px sidebar grid, the sticky header and the restyled nav and capture disc. Only colour polish remains: the teal logo tile, active colours and borders.
+- Every `min-width` media rule was removed, and headline sizes are fixed phone sizes (no viewport `clamp`), so a laptop shows exactly the phone layout.
+- The `--nav-h` token is back to 68 px.
+
+**Memories on a phone:** one reading column of row cards. Each row has an 88 px real thumbnail or platform tile, then the kind line ("TikTok video"), title, creator or description, and saved date.
+
+**The Memory page:** stacks vertically (cover, title, summary, note, actions, disclosures).
+
+**Kept from 7916765:**
+
+- the empty-`#url=` share notice, the open-tab share pickup and the unchanged share parser;
+- honest titles and descriptions, thumbnails and platform tiles;
+- plain-language copy;
+- the false-error fixes;
+- the video-upload gate;
+- "Use in a plan".
+
+**Verified in the real app:** screenshots `test-results/stage12j3/restored/` at 375, 390, 430, 768 and 1440 px, with sheets `sheet-restored-*.png`:
+
+- no horizontal overflow and no sidebar;
+- at 1440 px, the centred mobile app with its bottom bar.
+
+**Checks:** lint (0 errors), typecheck, build (run first), 294/294 tests and `git diff --check` all pass.

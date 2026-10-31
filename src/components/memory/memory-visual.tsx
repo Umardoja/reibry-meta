@@ -34,6 +34,7 @@ export function MemoryCard({ view, excerpt }: { view: MemoryView; excerpt?: stri
   return <Link href={view.href} className="memory-card">
     <MemoryCover view={view} excerpt={excerpt} />
     <span className="memory-card-body">
+      <span className="memory-card-kind"><KindGlyph kind={view.kind} />{view.kindLabel}</span>
       <span className="memory-card-title">{view.title}</span>
       {view.creator ? <span className="memory-card-meta">{view.creator}</span> : view.summary && view.kind !== "note" ? <span className="memory-card-meta">{view.summary.text}</span> : null}
       <span className="memory-card-saved">{view.savedLabel}</span>
