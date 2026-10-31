@@ -78,6 +78,13 @@ export function safeThumbnail(value: JsonValue | undefined) {
   const candidate = text(value); if (!candidate) return null;
   try { const url = new URL(candidate); return url.protocol === "https:" && !url.username && !url.password ? url.toString() : null; } catch { return null; }
 }
+/** Stage 12K-1: TikTok's documented embed player for a verified numeric post ID, never built from untrusted HTML. No autoplay; the
+ *  player shows TikTok's own description, which REIBRY never reads, stores or searches. */
+export function tiktokPlayerUrl(memory: Memory) {
+  const postId = text(memory.metadata.postId);
+  if (memory.sourceType !== "link" || memory.metadata.platform !== "tiktok" || !postId || !/^\d{15,21}$/.test(postId)) return null;
+  return `https://www.tiktok.com/player/v1/${postId}?autoplay=0&description=1&music_info=1&rel=0`;
+}
 const clamp = (value: string, max: number) => value.length > max ? `${value.slice(0, max - 1).trimEnd()}…` : value;
 
 export function presentMemory(memory: Memory, now = new Date()): MemoryView {

@@ -40,6 +40,9 @@ export function CaptureForm({ shared }: { shared?: SharedPayload | null }) {
   const [content, setContent] = useState(() => prefill(initial));
   const [title, setTitle] = useState(() => initial?.title ?? "");
   const [sharedText, setSharedText] = useState(() => sharedWords(initial));
+  // Stage 12K-1: a share handoff shows a compact screen (link and Save first); typing or pasting here keeps the full one.
+  const [handoff, setHandoff] = useState(() => !!initial?.url);
+  const [noteAdded, setNoteAdded] = useState(false);
   const [forceNote, setForceNote] = useState(false);
   const [busy, setBusy] = useState(false); const [error, setError] = useState("");
   const [result, setResult] = useState<CaptureReply | null>(null);
@@ -53,7 +56,7 @@ export function CaptureForm({ shared }: { shared?: SharedPayload | null }) {
     // Safari can reuse an open REIBRY tab for a new share: then only the #fragment changes and the page does not reload.
     function onHash() {
       const next = readShareArrival("", window.location.hash); if (!next.arrived) return;
-      setArrival(next); setResult(null); setError(""); setForceNote(false);
+      setArrival(next); setResult(null); setError(""); setForceNote(false); setHandoff(!!next.payload);
       if (next.payload) { setInitial(next.payload); setContent(prefill(next.payload)); setTitle(next.payload.title); setSharedText(sharedWords(next.payload)); }
       window.history.replaceState(window.history.state, "", "/capture");
     }
@@ -78,7 +81,7 @@ export function CaptureForm({ shared }: { shared?: SharedPayload | null }) {
   }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); if (!detected) return; if (inFlight.current) return; inFlight.current = true; setBusy(true); setError(""); setResult(null); setDetails({ busy: false, message: "" });
+    event.preventDefault(); if (!detected) return; if (inFlight.current) return; inFlight.current = true; setBusy(true); setError(""); setResult(null); setNoteAdded(false); setDetails({ busy: false, message: "" });
     const note = String(new FormData(event.currentTarget).get("note") ?? "").trim();
     const body = detected.kind === "link"
       ? { sourceType: "link", content: detected.url, ...(title.trim() ? { title: title.trim() } : {}), ...([detected.note, note].filter(Boolean).length ? { note: [detected.note, note].filter(Boolean).join("\n") } : {}),
@@ -108,10 +111,13 @@ export function CaptureForm({ shared }: { shared?: SharedPayload | null }) {
     } catch (cause) { setDetails({ busy: false, message: cause instanceof Error && cause.name !== "AbortError" ? cause.message : "Getting details took too long. Your link is still saved." }); }
     finally { clearTimeout(timer); detailsInFlight.current = false; }
   }
-  function another() { setResult(null); setDetails({ busy: false, message: "" }); setTimeout(() => fieldRef.current?.focus(), 0); }
+  function another() { setResult(null); setHandoff(false); setDetails({ busy: false, message: "" }); setTimeout(() => fieldRef.current?.focus(), 0); }
 
   const view = result ? presentMemory(result.memory) : null;
   const detailState = !view || view.details.state === "none" ? null : details.busy ? "Getting details…" : view.details.state === "ready" ? "Details ready" : view.details.state === "pending" ? "Details not fetched yet" : "Limited details";
+  // Only when the platform shared nothing useful: one optional question, answered in the user's own words (typed or dictated).
+  const askWhy = !!result && result.memory.sourceType === "link" && !details.busy && !!view && (view.details.state === "limited" || (view.details.state === "pending" && !!details.message))
+    && (noteAdded || !result.memory.rawText);
   const shareProblem = arrival.arrived && !arrival.payload && !content.trim() && !result;
   return <RequireAuth nextPath="/capture">
     {shareProblem && <section className="notice" role="status" aria-live="polite">
@@ -120,12 +126,12 @@ export function CaptureForm({ shared }: { shared?: SharedPayload | null }) {
       <div className="inline-actions">{canPaste && <button type="button" className="btn-soft" onClick={() => void paste()}>{IC.paste}Paste link</button>}</div>
       {arrival.received && <details><summary>What arrived</summary><code>{arrival.received}</code></details>}
     </section>}
-    {!result && <form className="capture-box" onSubmit={submit} aria-busy={busy}>
+    {!result && <form className="capture-box" onSubmit={submit} aria-busy={busy} data-handoff={handoff ? "" : undefined}>
       <label htmlFor="capture-content" className="sr-only">Paste a link or write a note</label>
-      <textarea ref={fieldRef} id="capture-content" name="content" value={content} onChange={event => { setContent(event.target.value); setError(""); }} maxLength={50_000}
+      <textarea ref={fieldRef} id="capture-content" name="content" rows={handoff ? 2 : undefined} value={content} onChange={event => { setContent(event.target.value); setError(""); }} maxLength={50_000}
         placeholder="Paste a link or write a note…" spellCheck aria-describedby="capture-detected" required />
       <div className="capture-detected" id="capture-detected" aria-live="polite">
-        {!detected && <span>Links from TikTok, YouTube, Instagram and the web, or any note.</span>}
+        {!detected && !handoff && <span>Links from TikTok, YouTube, Instagram and the web, or any note.</span>}
         {detected?.kind === "link" && <><KindGlyph kind={detected.platform} /><span><strong>{platformName[detected.platform]} link</strong>{detected.note ? " · the words around it become your note" : ""}</span>
           {detected.note && <button type="button" className="chip" onClick={() => setForceNote(true)}>Save as a note instead</button>}</>}
         {detected?.kind === "note" && <><KindGlyph kind="note" /><span>Saved as a note, exactly as written.</span>
@@ -146,7 +152,7 @@ export function CaptureForm({ shared }: { shared?: SharedPayload | null }) {
       </div>
     </form>}
     {error && <p className="auth-error" role="alert">{error}</p>}
-    {result && view && <section className="saved-card capture-result" role="status" aria-live="polite">
+    {result && view && <section className="saved-card capture-result" role="status" aria-live="polite" data-handoff={handoff ? "" : undefined}>
       <div className="saved-headline"><span className="saved-check">{IC.check}</span>
         <div><h2 className="eyebrow-like">{result.duplicate ? "Already saved" : "Saved"}</h2><p>{result.duplicate ? "It was already in your Memories." : "It's in your Memories. Get back to what you were doing."}</p></div></div>
       <Link href={view.href} className="saved-preview"><MemoryCover view={view} size="thumb" excerpt={view.kind === "note" ? result.memory.rawText : null} />
@@ -154,6 +160,7 @@ export function CaptureForm({ shared }: { shared?: SharedPayload | null }) {
           <span className="memory-card-meta">{[view.kindLabel, view.creator].filter(Boolean).join(" · ")}</span></span></Link>
       {detailState && <p className="details-line eyebrow-status">{details.busy && <span className="spinner" aria-hidden="true" />}{detailState}{!details.busy && view.details.message ? ` — ${view.details.message}` : ""}</p>}
       {details.message && <p className="field-hint" role="status">{details.message}</p>}
+      {askWhy && <WhatCaughtYourEye key={result.memory.id} memoryId={result.memory.id} onSaved={memory => { setNoteAdded(true); setResult(current => current && { ...current, memory }); }} />}
       <div className="inline-actions">
         {view.details.state !== "none" && view.details.state !== "ready" && <button type="button" className="button btn-ghost" disabled={details.busy} onClick={() => void getDetails(result)}>{details.busy ? "Getting details…" : "Retry getting details"}</button>}
         <Link href={view.href} className="button btn-ghost">View Memory</Link>
@@ -161,4 +168,29 @@ export function CaptureForm({ shared }: { shared?: SharedPayload | null }) {
       </div>
     </section>}
   </RequireAuth>;
+}
+
+
+/** Stage 12K-1: the optional after-save note. It is written to the Memory's own note through the owner-only Memory update (PATCH), so
+ *  it is searchable and reaches Home as the user's note. iPhone keyboard dictation works in the box; REIBRY records no audio itself. */
+function WhatCaughtYourEye({ memoryId, onSaved }: { memoryId: string; onSaved: (memory: Memory) => void }) {
+  const [state, setState] = useState<"open" | "saving" | "added" | "skipped">("open"); const [error, setError] = useState("");
+  async function add(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); const note = String(new FormData(event.currentTarget).get("why") ?? "").trim(); if (!note || state === "saving") return;
+    setState("saving"); setError("");
+    try { const response = await fetch(`/api/memories/${memoryId}`, { method: "PATCH", credentials: "same-origin", cache: "no-store", signal: AbortSignal.timeout(12_000),
+        headers: { "Content-Type": "application/json" }, body: JSON.stringify({ rawText: note }) });
+      const body = await response.json(); if (!response.ok || !body?.data) throw new Error(); onSaved(body.data as Memory); setState("added"); }
+    catch { setState("open"); setError("That couldn't be added. Your link is still saved; try again or skip."); }
+  }
+  if (state === "skipped") return null;
+  if (state === "added") return <p className="field-hint why-added" role="status">{IC.check} Added to this Memory as your note.</p>;
+  return <form className="why-form" onSubmit={add} aria-busy={state === "saving"}>
+    <label htmlFor="why-note">What caught your eye? <span className="optional">(optional)</span></label>
+    <textarea className="input" id="why-note" name="why" rows={2} maxLength={500} autoCapitalize="sentences" enterKeyHint="done" placeholder="e.g. Pasta bake to try on Sunday" aria-describedby="why-hint" />
+    <p className="field-hint" id="why-hint">In your own words, so you can find it later. You can use the keyboard&apos;s microphone to speak.</p>
+    {error && <p className="auth-error" role="alert">{error}</p>}
+    <div className="why-actions"><button type="submit" className="button btn-primary" disabled={state === "saving"}>{state === "saving" ? "Adding…" : "Add"}</button>
+      <button type="button" className="button btn-ghost" onClick={() => setState("skipped")}>Skip</button></div>
+  </form>;
 }

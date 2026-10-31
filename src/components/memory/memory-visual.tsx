@@ -36,7 +36,7 @@ export function MemoryCard({ view, excerpt }: { view: MemoryView; excerpt?: stri
     <span className="memory-card-body">
       <span className="memory-card-kind"><KindGlyph kind={view.kind} />{view.kindLabel}</span>
       <span className="memory-card-title">{view.title}</span>
-      {(view.creator || (view.summary && view.kind !== "note")) && <span className="memory-card-meta">{[view.creator, view.kind !== "note" ? view.summary?.text : null].filter(Boolean).join(" · ")}</span>}
+      {(view.creator || ((view.summary || view.note) && view.kind !== "note")) && <span className="memory-card-meta">{[view.creator, view.kind !== "note" ? view.summary?.text ?? view.note : null].filter(Boolean).join(" · ")}</span>}
       <span className="memory-card-saved">{view.savedLabel}</span>
     </span>
   </Link>;

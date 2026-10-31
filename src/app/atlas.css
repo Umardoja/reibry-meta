@@ -264,3 +264,23 @@ a.button, a.btn-soft, .memory-card, .saved-preview { text-decoration: none; }
 .compact-saved { font-size: 12px; color: var(--outline); }
 /* Home: heading, welcome and conversation share one centred reading column. */
 .home-intro { width: 100%; max-width: 720px; margin-inline: auto; }
+/* Stage 12K-1: a share handoff puts the incoming link and Save first (no layout change; the intro and tips step aside). */
+.capture-page:has([data-handoff]) { gap: 12px; }
+.capture-page:has([data-handoff]) .page-hero { padding: 4px 0 0; gap: 2px; }
+.capture-page:has([data-handoff]) .page-hero h1 { font-size: 22px; }
+.capture-page:has([data-handoff]) .page-hero p, .capture-page:has([data-handoff]) .capture-tips { display: none; }
+.capture-box[data-handoff] { gap: 8px; padding: 14px; }
+.capture-box[data-handoff] textarea { min-height: 52px; font-size: 16px; line-height: 1.35; overflow-wrap: anywhere; }
+.capture-box[data-handoff] .capture-detected { min-height: 24px; }
+/* The optional after-save note. */
+.why-form { display: grid; gap: 6px; padding-top: 12px; border-top: 1px solid var(--outline-var); }
+.why-form label { font-weight: 650; font-size: var(--fs-base); }
+.why-form textarea { min-height: 0; resize: none; font-size: 16px; }
+.why-actions { display: flex; gap: 10px; }
+.capture-result .why-actions .button { flex: 1; width: auto; margin-top: 0; }
+.why-added { display: flex; align-items: center; gap: 6px; }
+.why-added svg { width: 16px; height: 16px; }
+/* Optional official TikTok player on a Memory, loaded only on request. */
+.tiktok-preview { display: grid; gap: 8px; justify-items: center; }
+.tiktok-preview iframe { width: 100%; max-width: 325px; aspect-ratio: 9 / 16; border: 0; border-radius: var(--r-md); background: #000; }
+.tiktok-preview .field-hint { text-align: center; }
