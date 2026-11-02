@@ -321,6 +321,13 @@ h1 { font-size: clamp(2.75rem, 6vw, 4.5rem); line-height: 1.08; letter-spacing: 
 .home-planning-choice label { display: flex; }
 .home-upcoming-plan { display: grid; gap: 2px; width: fit-content; max-width: 100%; margin-top: 14px; padding: 10px 13px; border: 1px solid var(--border-focus); border-radius: var(--r-md); background: var(--surface-low); color: var(--on-surface); text-decoration: none; }
 .home-upcoming-plan small { color: var(--on-surface-var); }
+.shortcut-device-setup { display: grid; gap: 12px; }
+.shortcut-device-setup .inline-actions { align-items: center; }
+.shortcut-device-setup textarea { display: block; width: 100%; min-height: 72px; margin-top: 9px; font-family: ui-monospace, monospace; font-size: 12px; }
+.stack-list { display: grid; gap: 8px; }
+.list-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 9px 0; border-top: 1px solid var(--outline-var); }
+.list-row span { display: grid; gap: 2px; min-width: 0; }
+.list-row small { color: var(--on-surface-var); }
 .home-typing { color: var(--on-surface-var); animation: home-pulse 1.5s ease-in-out infinite alternate; }
 @keyframes home-pulse { to { opacity: .55; } }
 @media (prefers-reduced-motion: reduce) { .home-typing { animation: none; } }

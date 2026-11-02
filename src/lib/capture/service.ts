@@ -9,6 +9,9 @@ import type { EnrichmentWriter } from "./trusted-enrichment.ts";
 import { cleanSharedText } from "./share.ts";
 import { parsePublicLink, type ParsedCaptureUrl } from "./url-policy.ts";
 
+/** The save-first path needs only owner-bound atomic creation. Other repository capabilities stay unavailable to device capture. */
+export type CaptureRepository = Pick<MemoryRepository, "createUnique"> & Pick<MemoryRepository, "findLinkByPostId"> & { update?: MemoryRepository["update"] };
+
 /** Request 2 (enrichment) budget. Request 1 (save) performs no network metadata work at all. */
 export const ENRICHMENT_BUDGET_MS = 6_000;
 
@@ -63,7 +66,7 @@ function isPlaceholderTitle(memory: Memory, link: ParsedCaptureUrl) {
   try { return memory.title === link.hostname || memory.title === new URL(memory.sourceUrl ?? link.normalized).hostname; } catch { return false; }
 }
 /** A repeated share returns the existing Memory, filling only owner-updatable fields: a missing note and a placeholder title. */
-async function improveDuplicate(memory: Memory, repository: MemoryRepository, link: ParsedCaptureUrl, input: CaptureInput) {
+async function improveDuplicate(memory: Memory, repository: Pick<MemoryRepository, "update">, link: ParsedCaptureUrl, input: CaptureInput) {
   const update: { title?: string; rawText?: string } = {};
   if (input.note && !memory.rawText) update.rawText = input.note;
   if (input.title && input.title !== memory.title && isPlaceholderTitle(memory, link)) update.title = input.title;
@@ -71,7 +74,7 @@ async function improveDuplicate(memory: Memory, repository: MemoryRepository, li
 }
 
 /** Request 1 (save): validate, canonicalize, deduplicate and persist immediately. No provider or page is contacted. */
-export async function capture(input: CaptureInput, repository: MemoryRepository): Promise<CaptureResult> {
+export async function capture(input: CaptureInput, repository: CaptureRepository): Promise<CaptureResult> {
   if (input.sourceType === "text") {
     const canonical = input.content.replace(/\r\n/g, "\n").trim();
     const created = await repository.createUnique({ title: input.title || noteTitle(canonical), sourceType: "text", sourceUrl: null,
@@ -81,9 +84,10 @@ export async function capture(input: CaptureInput, repository: MemoryRepository)
   const link = parsePublicLink(input.content);
   // A full TikTok post link matches an earlier share-link Memory whose post ID enrichment already verified (a database read only;
   // the save never contacts TikTok). Different post IDs never match.
-  if (link.platform === "tiktok" && link.postId && repository.findLinkByPostId) {
+  const update = repository.update;
+  if (link.platform === "tiktok" && link.postId && repository.findLinkByPostId && update) {
     const earlier = await repository.findLinkByPostId("tiktok", link.postId);
-    if (earlier) { const memory = await improveDuplicate(earlier, repository, link, input); return { memory, duplicate: true, enrichment: { status: enrichmentState(memory), provider: null } }; }
+    if (earlier) { const memory = await improveDuplicate(earlier, { update }, link, input); return { memory, duplicate: true, enrichment: { status: enrichmentState(memory), provider: null } }; }
   }
   // Words the share sheet sent with the link are cleaned again here (the client is not trusted) and labelled by their real source.
   const sharedText = input.sharedText ? cleanSharedText(input.sharedText) : "";
@@ -96,7 +100,7 @@ export async function capture(input: CaptureInput, repository: MemoryRepository)
   // analysis_status describes AI analysis, which capture does not perform; provider metadata state lives in metadata.enrichment.
   const created = await repository.createUnique({ title: input.title || placeholderTitle(link), sourceType: "link", sourceUrl: link.submitted,
     rawText: input.note ?? null, analysisStatus: "processing", metadata }, key(`link\0${link.identity}`));
-  const memory = created.duplicate ? await improveDuplicate(created.memory, repository, link, input) : created.memory;
+  const memory = created.duplicate && update ? await improveDuplicate(created.memory, { update }, link, input) : created.memory;
   return { ...created, memory, enrichment: { status: enrichmentState(memory), provider: null } };
 }
 

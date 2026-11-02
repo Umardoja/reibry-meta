@@ -45,3 +45,13 @@ export function createTrustedVideoClient(signal: AbortSignal,
   dependencies: TrustedSupabaseDependencies = { env: process.env, fetch }): SupabaseClient {
   return trustedClient(signal, dependencies, () => new Error("VIDEO_NOT_CONFIGURED"));
 }
+
+/**
+ * Sole elevated capability for a device-token capture RPC. The RPC itself only
+ * accepts a hashed capture credential and can only create a link Memory; never
+ * use this client for session reads or general owner-scoped data access.
+ */
+export function createTrustedShortcutCaptureClient(signal: AbortSignal,
+  dependencies: TrustedSupabaseDependencies = { env: process.env, fetch }): SupabaseClient {
+  return trustedClient(signal, dependencies, () => new Error("SHORTCUT_CAPTURE_NOT_CONFIGURED"));
+}
