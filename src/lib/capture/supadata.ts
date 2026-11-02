@@ -17,12 +17,16 @@ const approvedPilotIdentities = new Set([
 
 export type SupadataDependencies = { env: Record<string, string | undefined>; fetch: typeof fetch; timeoutMs?: number };
 export type SupadataMetadataFetcher = (link: ParsedCaptureUrl, ownerId: string, signal?: AbortSignal) => Promise<MetadataResult | null>;
+export type SupadataDiagnosticFetcher = (link: ParsedCaptureUrl, ownerId: string, signal?: AbortSignal) => Promise<{ metadata: MetadataResult | null; diagnostic: SupadataPilotSourceDiagnostic | null } | null>;
 /** Safe, field-free source-check categories for an owner-approved future diagnostic call. Never logged automatically. */
 export type SupadataSourceMatchDiagnostic = "platform" | "missing-url" | "missing-id" | "malformed-url" | "url-platform" | "url-identity" | "id";
 export type SupadataPilotSourceDiagnostic = {
   approvedIdentity: string; returnedPlatform: string | "missing" | "other"; returnedIdFormat: "numeric" | "shortcode" | "missing" | "other";
   returnedUrlHostPath: string | "missing" | "malformed" | "credentialed"; condition: SupadataSourceMatchDiagnostic | null;
-  descriptionPresent: boolean; thumbnailPresent: boolean;
+  returnedIdRepresentation: "shortcode" | "numeric-media-id" | "numeric-other" | "unrecognized" | "missing";
+  returnedUrlIdentity: "exact" | "shortcode-mismatch" | "missing" | "malformed" | "wrong-platform" | "unrecognized";
+  identityFields: "verified" | "contradictory" | "incomplete" | "unverified";
+  descriptionPresent: boolean; creatorPresent: boolean; tagsPresent: boolean; thumbnailPresent: boolean;
 };
 const defaultDependencies: SupadataDependencies = { env: process.env, fetch };
 
@@ -95,6 +99,32 @@ async function readJson(response: Response, signal: AbortSignal) {
 }
 
 type SourceMatch = { returned: ParsedCaptureUrl; diagnostic: null } | { returned: null; diagnostic: SupadataSourceMatchDiagnostic };
+
+const instagramShortcodeAlphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+/**
+ * Instagram shortcodes are a base-64 representation of the legacy media ID.
+ * This is used only as an additional strict equivalence check; provider URLs still
+ * must independently resolve to the exact saved shortcode. BigInt avoids Number
+ * precision loss for large legacy media IDs.
+ */
+export function instagramShortcodeToMediaId(shortcode: string) {
+  if (!/^[A-Za-z0-9_-]{1,64}$/.test(shortcode)) return null;
+  let mediaId = BigInt(0);
+  for (const character of shortcode) {
+    const digit = instagramShortcodeAlphabet.indexOf(character);
+    if (digit < 0) return null;
+    mediaId = (mediaId * BigInt(64)) + BigInt(digit);
+  }
+  return mediaId.toString();
+}
+
+function equivalentProviderId(link: ParsedCaptureUrl, providerId: string) {
+  if (!link.postId) return false;
+  if (providerId === link.postId) return true;
+  return link.platform === "instagram" && /^\d{5,25}$/.test(providerId)
+    && instagramShortcodeToMediaId(link.postId) === providerId;
+}
+
 function sourceMatch(link: ParsedCaptureUrl, data: Record<string, unknown>): SourceMatch {
   if (data.platform !== link.platform) return { returned: null, diagnostic: "platform" };
   if (typeof data.id !== "string") return { returned: null, diagnostic: "missing-id" };
@@ -110,7 +140,7 @@ function sourceMatch(link: ParsedCaptureUrl, data: Record<string, unknown>): Sou
   try { returned = parsePublicLink(data.url); } catch { return { returned: null, diagnostic: "malformed-url" }; }
   if (returned.platform !== link.platform) return { returned: null, diagnostic: "url-platform" };
   if (returned.identity !== link.identity) return { returned: null, diagnostic: "url-identity" };
-  if (link.postId && data.id !== link.postId) return { returned: null, diagnostic: "id" };
+  if (link.postId && !equivalentProviderId(link, data.id)) return { returned: null, diagnostic: "id" };
   return { returned, diagnostic: null };
 }
 
@@ -131,10 +161,30 @@ function diagnosticIdFormat(value: unknown): SupadataPilotSourceDiagnostic["retu
   if (/^\d{5,25}$/.test(value)) return "numeric";
   return /^[A-Za-z0-9_-]{5,64}$/.test(value) ? "shortcode" : "other";
 }
+function diagnosticIdRepresentation(link: ParsedCaptureUrl, value: unknown): SupadataPilotSourceDiagnostic["returnedIdRepresentation"] {
+  if (typeof value !== "string") return "missing";
+  if (/^\d{5,25}$/.test(value)) return link.platform === "instagram" && link.postId && instagramShortcodeToMediaId(link.postId) === value
+    ? "numeric-media-id" : "numeric-other";
+  return /^[A-Za-z0-9_-]{5,64}$/.test(value) && value === link.postId ? "shortcode" : "unrecognized";
+}
 function diagnosticUrlHostPath(value: unknown): SupadataPilotSourceDiagnostic["returnedUrlHostPath"] {
   if (typeof value !== "string") return "missing";
   try { const url = new URL(value); if (url.username || url.password) return "credentialed"; return `${url.hostname.toLowerCase()}${url.pathname}`.slice(0, 256); }
   catch { return "malformed"; }
+}
+function diagnosticUrlIdentity(link: ParsedCaptureUrl, value: unknown): SupadataPilotSourceDiagnostic["returnedUrlIdentity"] {
+  if (typeof value !== "string") return "missing";
+  try {
+    const returned = parsePublicLink(value);
+    if (returned.platform !== link.platform) return "wrong-platform";
+    return returned.identity === link.identity ? "exact" : "shortcode-mismatch";
+  } catch { return "malformed"; }
+}
+function diagnosticIdentityFields(link: ParsedCaptureUrl, data: Record<string, unknown>, urlIdentity: SupadataPilotSourceDiagnostic["returnedUrlIdentity"]): SupadataPilotSourceDiagnostic["identityFields"] {
+  if (typeof data.id !== "string" || urlIdentity === "missing" || urlIdentity === "malformed") return "incomplete";
+  if (urlIdentity === "shortcode-mismatch" && equivalentProviderId(link, data.id)) return "contradictory";
+  if (urlIdentity !== "exact") return "unverified";
+  return equivalentProviderId(link, data.id) ? "verified" : "contradictory";
 }
 
 /**
@@ -144,9 +194,13 @@ function diagnosticUrlHostPath(value: unknown): SupadataPilotSourceDiagnostic["r
 export function pilotSupadataSourceDiagnostic(ownerId: string, link: ParsedCaptureUrl, value: unknown, env: Record<string, string | undefined>): SupadataPilotSourceDiagnostic | null {
   if (env.SUPADATA_DEV_DIAGNOSTICS !== "true" || !supadataPilotAllows(ownerId, link, env) || !value || typeof value !== "object" || Array.isArray(value)) return null;
   const data = value as Record<string, unknown>; const media = data.media && typeof data.media === "object" && !Array.isArray(data.media) ? data.media as Record<string, unknown> : {};
+  const urlIdentity = diagnosticUrlIdentity(link, data.url);
   return { approvedIdentity: link.identity, returnedPlatform: diagnosticPlatform(data.platform), returnedIdFormat: diagnosticIdFormat(data.id),
     returnedUrlHostPath: diagnosticUrlHostPath(data.url), condition: sourceMatch(link, data).diagnostic,
-    descriptionPresent: typeof data.description === "string" && data.description.trim().length > 0, thumbnailPresent: typeof media.thumbnailUrl === "string" && media.thumbnailUrl.trim().length > 0 };
+    returnedIdRepresentation: diagnosticIdRepresentation(link, data.id), returnedUrlIdentity: urlIdentity,
+    identityFields: diagnosticIdentityFields(link, data, urlIdentity), descriptionPresent: typeof data.description === "string" && data.description.trim().length > 0,
+    creatorPresent: !!(data.author && typeof data.author === "object" && !Array.isArray(data.author)), tagsPresent: Array.isArray(data.tags) && data.tags.length > 0,
+    thumbnailPresent: typeof media.thumbnailUrl === "string" && media.thumbnailUrl.trim().length > 0 };
 }
 
 /** Parses only bounded, display-safe metadata. Returned fields remain expressly unverified external metadata. */
@@ -192,5 +246,32 @@ export function createSupadataMetadataFetcher(dependencies: SupadataDependencies
       return parseSupadataMetadata(link, await readJson(response, controller.signal));
     } catch (error) { return failure(error instanceof Error && error.name === "AbortError" ? "supadata-timeout" : "supadata-unavailable"); }
     finally { clearTimeout(timer); requestSignal?.removeEventListener("abort", cancel); controller.abort(); }
+  };
+}
+
+/**
+ * One-call diagnostic companion for an explicitly authorized local maintenance script.
+ * The cloned response is bounded and inspected in memory before the production parser
+ * sees it; neither the raw response nor any provider text is returned or retained.
+ */
+export function createSupadataDiagnosticFetcher(dependencies: SupadataDependencies = defaultDependencies): SupadataDiagnosticFetcher {
+  return async (link, ownerId, requestSignal) => {
+    let diagnostic: SupadataPilotSourceDiagnostic | null = null;
+    const fetcher = createSupadataMetadataFetcher({
+      ...dependencies,
+      fetch: async (input, init) => {
+        const response = await dependencies.fetch(input, init);
+        if (response.ok && response.headers.get("content-type")?.toLowerCase().startsWith("application/json")) {
+          const controller = new AbortController();
+          try {
+            const raw = await readJson(response.clone(), controller.signal);
+            diagnostic = pilotSupadataSourceDiagnostic(ownerId, link, raw, dependencies.env);
+          } catch { /* Production parsing still decides the safe result. */ }
+          finally { controller.abort(); }
+        }
+        return response;
+      },
+    });
+    return { metadata: await fetcher(link, ownerId, requestSignal), diagnostic };
   };
 }

@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { toModelEvidence } from "../src/lib/ai/meta/contracts.ts";
-import { createSupadataMetadataFetcher, diagnoseSupadataSourceMatch, parseSupadataMetadata, pilotSupadataSourceDiagnostic, supadataGate, supadataPilotAllows } from "../src/lib/capture/supadata.ts";
-import { capture, enrichSavedLink, type LinkEnricher } from "../src/lib/capture/service.ts";
+import { createSupadataDiagnosticFetcher, createSupadataMetadataFetcher, diagnoseSupadataSourceMatch, instagramShortcodeToMediaId, parseSupadataMetadata, pilotSupadataSourceDiagnostic, supadataGate, supadataPilotAllows } from "../src/lib/capture/supadata.ts";
+import { capture, enrichmentDetails, enrichSavedLink, type LinkEnricher } from "../src/lib/capture/service.ts";
 import { parsePublicLink } from "../src/lib/capture/url-policy.ts";
 import { presentMemory } from "../src/lib/memory/presentation.ts";
 import { rankMemories } from "../src/lib/retrieval/service.ts";
@@ -82,6 +82,15 @@ test("Instagram requires one exact shortcode confirmed by both the provider ID a
   assert.equal(parseSupadataMetadata(instagram, vendorRecord(`https://www.instagram.com/reel/${wrongShortcode}/`, "instagram", "DOGnqc1DlIy")).reason, "supadata-mismatched-source");
 });
 
+test("Instagram accepts a mathematically equivalent legacy media ID only alongside the exact public shortcode URL", () => {
+  const instagram = parsePublicLink(instagramUrl); const legacyMediaId = instagramShortcodeToMediaId("DOGnqc1DlIy");
+  assert.match(legacyMediaId ?? "", /^\d+$/);
+  assert.equal(parseSupadataMetadata(instagram, vendorRecord(instagramUrl, "instagram", legacyMediaId!)).status, "complete");
+  assert.equal(parseSupadataMetadata(instagram, vendorRecord("https://www.instagram.com/reel/DifferentPost9/", "instagram", legacyMediaId!)).reason, "supadata-mismatched-source");
+  assert.equal(parseSupadataMetadata(instagram, vendorRecord(instagramUrl, "instagram", "12345678901234567890")).reason, "supadata-mismatched-source");
+  assert.equal(parseSupadataMetadata(instagram, vendorRecord(instagramUrl, "instagram", "17841400000000000_1234567890")).reason, "supadata-mismatched-source");
+});
+
 test("a TikTok response with the exact numeric post ID may omit only its URL", () => {
   const link = parsePublicLink(tiktokUrl); const withoutUrl = { ...vendorRecord(tiktokUrl, "tiktok", "7696611605374602518"), url: undefined };
   const accepted = parseSupadataMetadata(link, withoutUrl);
@@ -118,8 +127,39 @@ test("server-only pilot diagnostics are default-off, require the exact gate, and
   assert.equal(pilotSupadataSourceDiagnostic(userB, link, record, { ...env, SUPADATA_DEV_DIAGNOSTICS: "true" }), null);
   const diagnostic = pilotSupadataSourceDiagnostic(userA, link, record, { ...env, SUPADATA_DEV_DIAGNOSTICS: "true" });
   assert.deepEqual(diagnostic, { approvedIdentity: "tiktok:7696611605374602518", returnedPlatform: "tiktok", returnedIdFormat: "numeric",
-    returnedUrlHostPath: "m.tiktok.com/v/7696611605374602518.html", condition: null, descriptionPresent: true, thumbnailPresent: true });
+    returnedUrlHostPath: "m.tiktok.com/v/7696611605374602518.html", condition: null, returnedIdRepresentation: "numeric-other", returnedUrlIdentity: "exact",
+    identityFields: "verified", descriptionPresent: true, creatorPresent: true, tagsPresent: true, thumbnailPresent: true });
   assert.doesNotMatch(JSON.stringify(diagnostic), /never return this text/);
+});
+
+test("the diagnostic fetcher reports sanitized Instagram identity shape before production parsing and can persist one verified response", async () => {
+  const link = parsePublicLink(instagramUrl); const state = createMemoryTestState(); const repo = trackedRepository(userA, state);
+  const saved = await capture({ sourceType: "link", content: instagramUrl, title: "My Instagram title", note: "My own note" }, repo);
+  const fetcher = createSupadataDiagnosticFetcher({ env: { ...env, SUPADATA_DEV_DIAGNOSTICS: "true" }, fetch: async () =>
+    new Response(JSON.stringify(vendorRecord("https://www.instagram.com/p/DOGnqc1DlIy/", "instagram", "DOGnqc1DlIy", "Weekend market flowers")), { headers: { "content-type": "application/json" } }) });
+  const result = await fetcher(link, userA); assert.ok(result); assert.equal(result.diagnostic?.condition, null);
+  assert.equal(result.diagnostic?.returnedIdRepresentation, "shortcode"); assert.equal(result.diagnostic?.returnedUrlIdentity, "exact");
+  assert.equal(result.diagnostic?.identityFields, "verified"); assert.equal(result.diagnostic?.descriptionPresent, true);
+  assert.equal(result.diagnostic?.creatorPresent, true); assert.equal(result.diagnostic?.tagsPresent, true); assert.equal(result.diagnostic?.thumbnailPresent, true);
+  assert.equal(result.metadata?.status, "complete");
+  const written = await createInMemoryEnrichmentWriter(userA, state)(saved.memory.id, enrichmentDetails(result.metadata!), null);
+  assert.equal(written.id, saved.memory.id); assert.equal(written.title, "My Instagram title"); assert.equal(written.rawText, "My own note");
+  assert.equal(written.metadata.caption, "Weekend market flowers"); assert.equal(state.size, 1);
+});
+
+test("sanitized Instagram diagnostics distinguish every rejected identity shape without leaking provider content", () => {
+  const link = parsePublicLink(instagramUrl); const diagnosticEnv = { ...env, SUPADATA_DEV_DIAGNOSTICS: "true" };
+  const diagnose = (record: unknown) => pilotSupadataSourceDiagnostic(userA, link, record, diagnosticEnv)!;
+  assert.equal(diagnose({ platform: "instagram", id: "DOGnqc1DlIy" }).condition, "missing-url");
+  assert.equal(diagnose({ platform: "instagram", url: instagramUrl }).condition, "missing-id");
+  assert.equal(diagnose(vendorRecord(instagramUrl, "tiktok", "DOGnqc1DlIy")).condition, "platform");
+  assert.equal(diagnose(vendorRecord("https://not a URL", "instagram", "DOGnqc1DlIy")).condition, "malformed-url");
+  const urlMismatch = diagnose(vendorRecord("https://www.instagram.com/reel/DifferentPost9/", "instagram", "DOGnqc1DlIy"));
+  assert.equal(urlMismatch.condition, "url-identity"); assert.equal(urlMismatch.returnedUrlIdentity, "shortcode-mismatch"); assert.equal(urlMismatch.identityFields, "contradictory");
+  const idMismatch = diagnose(vendorRecord(instagramUrl, "instagram", "DifferentPost9"));
+  assert.equal(idMismatch.condition, "id"); assert.equal(idMismatch.returnedIdRepresentation, "unrecognized"); assert.equal(idMismatch.identityFields, "contradictory");
+  const numericOther = diagnose(vendorRecord(instagramUrl, "instagram", "12345678901234567890"));
+  assert.equal(numericOther.returnedIdRepresentation, "numeric-other"); assert.equal(numericOther.identityFields, "contradictory");
 });
 
 test("mismatched, malformed, null-field and unsafe-thumbnail vendor responses fail honestly", () => {
