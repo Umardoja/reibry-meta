@@ -57,6 +57,7 @@ test("UI: one optional, skippable question after a limited save; no audio record
   for (const text of ["What caught your eye?", ">Skip<", "method: \"PATCH\"", "JSON.stringify({ rawText: note })", "view.details.state === \"limited\"", "data-handoff"]) assert.ok(form.includes(text), text);
   assert.doesNotMatch(form, /getUserMedia|MediaRecorder|autoFocus/, "dictation is the keyboard's; the question never grabs focus");
   const detail = await readFile("src/components/memory/memory-detail.tsx", "utf8");
+  assert.match(detail, /rawText: note\.trim\(\) \? note : null/, "clearing an optional saved-link note sends an explicit null");
   assert.match(detail, /\{player && preview && <div className="tiktok-preview"/, "the iframe exists only after the user asks");
   assert.match(detail, /sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-presentation"/);
   assert.match(detail, /REIBRY doesn&apos;t read, save or search what it shows/);

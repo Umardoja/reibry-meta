@@ -40,6 +40,7 @@ test("create and update validation reject empty, oversized, forged and unsupport
     { rawText: "ok", sourceType: "link" }]) assert.throws(() => parseCreateMemory(value));
   for (const value of [{}, { title: "" }, { rawText: "ok", analysisStatus: "complete" }]) assert.throws(() => parseUpdateMemory(value));
   assert.deepEqual(parseUpdateMemory({ title: " Renamed " }), { title: "Renamed" });
+  assert.deepEqual(parseUpdateMemory({ rawText: null }), { rawText: null }, "an optional link/video note can be cleared explicitly");
 });
 test("list validation bounds pagination and rejects unknown filters", () => {
   assert.deepEqual(parseMemoryList(new URL(origin + "/api/memories")), { limit: 20, offset: 0 });
@@ -80,6 +81,17 @@ test("owned updates validate fields and delete removes only the owned record", a
   assert.equal(updated.status, 200); assert.equal((updated.data as Memory).title, "Renamed");
   assert.equal((await handleMemoryRequest("delete", request("DELETE", "/api/memories/" + idA), idA, factory)).status, 200);
   assert.equal(state.has(idA), false); assert.equal(state.has(idB), true);
+});
+test("an owner can clear an optional link note but cannot clear text Memory content", async () => {
+  const linkId = "33333333-3333-4333-8333-333333333333";
+  const state = createMemoryTestState([{ ...memory(idA, userA), rawText: "Required text" }, {
+    ...memory(linkId, userA), sourceType: "link", sourceUrl: "https://example.com/saved", rawText: "Optional note",
+  }]);
+  const factory = context(createInMemoryMemoryRepository(userA, state));
+  const cleared = await handleMemoryRequest("update", request("PATCH", "/api/memories/" + linkId, { rawText: null }), linkId, factory);
+  assert.equal(cleared.status, 200); assert.equal((cleared.data as Memory).rawText, null);
+  const rejected = await handleMemoryRequest("update", request("PATCH", "/api/memories/" + idA, { rawText: null }), idA, factory);
+  assert.equal(rejected.status, 400); assert.equal(state.get(idA)?.rawText, "Required text");
 });
 test("list ordering is stable, owner scoped and paginated", async () => {
   const state = createMemoryTestState([memory(idA, userA, "2026-10-27T09:00:00.000Z"), memory(idB, userB, "2026-10-27T12:00:00.000Z"),

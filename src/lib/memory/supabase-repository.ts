@@ -58,7 +58,7 @@ export function createSupabaseMemoryRepository(client: SupabaseClient, ownerId: 
       if (error) return storage(error); if (!data) throw new MemoryRepositoryFailure("NOT_FOUND"); return decode(data);
     },
     async update(id, input: MemoryUpdate) {
-      const row: Record<string, string> = {};
+      const row: Record<string, string | null> = {};
       if (input.title !== undefined) row.title = input.title;
       if (input.rawText !== undefined) row.raw_text = input.rawText;
       const { data, error } = await client.from("memories").update(row).eq("user_id", ownerId).eq("id", id).select(readColumns).maybeSingle();

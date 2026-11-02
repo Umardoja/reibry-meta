@@ -55,7 +55,12 @@ export async function handleMemoryRequest(operation: MemoryOperation, request: R
       if (operation === "list") return { status: 200, data: await context.repository.list(parseMemoryList(new URL(request.url))), error: null };
       if (operation === "create") return { status: 201, data: await context.repository.create(parseCreateMemory(await readJson(request, signal))), error: null };
       if (operation === "read") return { status: 200, data: await context.repository.read(itemId!), error: null };
-      if (operation === "update") return { status: 200, data: await context.repository.update(itemId!, parseUpdateMemory(await readJson(request, signal))), error: null };
+      if (operation === "update") {
+        const update = parseUpdateMemory(await readJson(request, signal));
+        // A text Memory's source is its note; optional notes on links/videos may be cleared explicitly.
+        if (update.rawText === null && (await context.repository.read(itemId!)).sourceType === "text") throw new MemoryContractError("A text Memory needs its note.");
+        return { status: 200, data: await context.repository.update(itemId!, update), error: null };
+      }
       await context.repository.delete(itemId!); return { status: 200, data: { id: itemId }, error: null };
     }, timeout);
   } catch (error) { return failure(mapped(error)); }

@@ -27,8 +27,9 @@ export function MemoryDetail({ id, videoTools = false }: { id: string; videoTool
   }, [id]);
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setBusy(true); setError(""); setSaved(""); const data = new FormData(event.currentTarget);
+    const rawText = data.get("rawText"); const note = typeof rawText === "string" ? rawText : "";
     try { const response = await fetch(`/api/memories/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: data.get("title"), ...(memory?.sourceType === "text" ? { rawText: data.get("rawText") } : data.get("rawText") ? { rawText: data.get("rawText") } : {}) }) });
+        body: JSON.stringify({ title: data.get("title"), ...(memory?.sourceType === "text" ? { rawText: note } : { rawText: note.trim() ? note : null }) }) });
       const body = await response.json(); if (!response.ok || !body?.data) throw new Error(); setMemory(body.data); setSaved("Changes saved."); }
     catch { setError("Your changes couldn't be saved. Try again."); } finally { setBusy(false); }
   }

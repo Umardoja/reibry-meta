@@ -21,7 +21,8 @@ export interface Memory {
 }
 export type NewTextMemory = { title: string; rawText: string };
 export type NewMemory = Pick<Memory, "title" | "sourceType" | "sourceUrl" | "rawText" | "analysisStatus" | "metadata">;
-export type MemoryUpdate = { title?: string; rawText?: string };
+/** `null` clears an optional note on a link or uploaded-video Memory. Text Memories always require content. */
+export type MemoryUpdate = { title?: string; rawText?: string | null };
 export type MemoryPage = { items: Memory[]; nextOffset: number | null };
 export type MemoryList = { limit: number; offset: number };
 
@@ -56,7 +57,7 @@ export function parseUpdateMemory(value: unknown): MemoryUpdate {
   const input = object(value); exactKeys(input, allowedUpdate);
   const update: MemoryUpdate = {};
   if (input.title !== undefined) update.title = boundedText(input.title, "Title", 200).trim();
-  if (input.rawText !== undefined) update.rawText = boundedText(input.rawText, "Memory text", 50_000);
+  if (input.rawText !== undefined) update.rawText = input.rawText === null ? null : boundedText(input.rawText, "Memory text", 50_000);
   if (!Object.keys(update).length) throw new MemoryContractError("Provide a title or Memory text update.");
   return update;
 }
