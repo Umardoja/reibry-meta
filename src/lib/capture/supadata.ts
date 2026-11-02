@@ -101,6 +101,7 @@ async function readJson(response: Response, signal: AbortSignal) {
 type SourceMatch = { returned: ParsedCaptureUrl; diagnostic: null } | { returned: null; diagnostic: SupadataSourceMatchDiagnostic };
 
 const instagramShortcodeAlphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+const instagramShortcodePattern = /^[A-Za-z0-9_-]{5,64}$/;
 /**
  * Instagram shortcodes are a base-64 representation of the legacy media ID.
  * This is used only as an additional strict equivalence check; provider URLs still
@@ -125,14 +126,24 @@ function equivalentProviderId(link: ParsedCaptureUrl, providerId: string) {
     && instagramShortcodeToMediaId(link.postId) === providerId;
 }
 
+function exactInstagramShortcode(link: ParsedCaptureUrl, providerId: string) {
+  return link.platform === "instagram" && !!link.postId && instagramShortcodePattern.test(providerId) && providerId === link.postId;
+}
+
 function sourceMatch(link: ParsedCaptureUrl, data: Record<string, unknown>): SourceMatch {
   if (data.platform !== link.platform) return { returned: null, diagnostic: "platform" };
   if (typeof data.id !== "string") return { returned: null, diagnostic: "missing-id" };
   // A live, one-shot TikTok response on 2026-11-02 had the documented platform and exact numeric video ID but omitted url.
-  // For TikTok only, that globally scoped numeric ID is enough to bind the response to an already canonical owner Memory.
-  // A null, malformed, contradictory, or non-TikTok URL never takes this path.
+  // A live Instagram response used the exact saved shortcode but omitted url. In either narrowly scoped case,
+  // the pre-validated canonical owner Memory supplies the URL. The fetcher still requires the exact owner and
+  // four-item pilot allowlist; the trusted writer re-checks the locked owned link Memory before persistence.
   if (data.url === undefined) {
     if (link.platform === "tiktok" && link.postId && data.id === link.postId) return { returned: link, diagnostic: null };
+    if (exactInstagramShortcode(link, data.id)) return { returned: link, diagnostic: null };
+    return { returned: null, diagnostic: link.postId && data.id !== link.postId ? "id" : "missing-url" };
+  }
+  if (data.url === null) {
+    if (exactInstagramShortcode(link, data.id)) return { returned: link, diagnostic: null };
     return { returned: null, diagnostic: link.postId && data.id !== link.postId ? "id" : "missing-url" };
   }
   if (typeof data.url !== "string") return { returned: null, diagnostic: "missing-url" };
@@ -181,7 +192,9 @@ function diagnosticUrlIdentity(link: ParsedCaptureUrl, value: unknown): Supadata
   } catch { return "malformed"; }
 }
 function diagnosticIdentityFields(link: ParsedCaptureUrl, data: Record<string, unknown>, urlIdentity: SupadataPilotSourceDiagnostic["returnedUrlIdentity"]): SupadataPilotSourceDiagnostic["identityFields"] {
-  if (typeof data.id !== "string" || urlIdentity === "missing" || urlIdentity === "malformed") return "incomplete";
+  if (typeof data.id !== "string") return "incomplete";
+  if (urlIdentity === "missing") return exactInstagramShortcode(link, data.id) && (data.url === undefined || data.url === null) ? "verified" : "incomplete";
+  if (urlIdentity === "malformed") return "incomplete";
   if (urlIdentity === "shortcode-mismatch" && equivalentProviderId(link, data.id)) return "contradictory";
   if (urlIdentity !== "exact") return "unverified";
   return equivalentProviderId(link, data.id) ? "verified" : "contradictory";

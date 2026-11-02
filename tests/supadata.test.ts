@@ -69,7 +69,7 @@ test("documented equivalent mobile TikTok and Instagram post URLs retain strict 
   assert.equal(parseSupadataMetadata(instagram, vendorRecord(postUrl, "instagram", "DOGnqc1DlIy")).status, "complete");
 });
 
-test("Instagram requires one exact shortcode confirmed by both the provider ID and a public post URL", () => {
+test("Instagram requires one exact shortcode when a public post URL is supplied", () => {
   const instagram = parsePublicLink(instagramUrl);
   const equivalentTvUrl = "https://www.instagram.com/tv/DOGnqc1DlIy/?utm_source=ignored";
   assert.equal(parseSupadataMetadata(instagram, vendorRecord(equivalentTvUrl, "instagram", "DOGnqc1DlIy")).status, "complete");
@@ -77,7 +77,7 @@ test("Instagram requires one exact shortcode confirmed by both the provider ID a
   const wrongShortcode = "DifferentPost9";
   assert.equal(diagnoseSupadataSourceMatch(instagram, vendorRecord(instagramUrl, "instagram", wrongShortcode)), "id");
   assert.equal(diagnoseSupadataSourceMatch(instagram, vendorRecord(`https://www.instagram.com/reel/${wrongShortcode}/`, "instagram", "DOGnqc1DlIy")), "url-identity");
-  assert.equal(diagnoseSupadataSourceMatch(instagram, { platform: "instagram", id: "DOGnqc1DlIy" }), "missing-url");
+  assert.equal(diagnoseSupadataSourceMatch(instagram, { platform: "instagram", id: "DOGnqc1DlIy" }), null);
   assert.equal(diagnoseSupadataSourceMatch(instagram, vendorRecord(instagramUrl, "tiktok", "DOGnqc1DlIy")), "platform");
   assert.equal(parseSupadataMetadata(instagram, vendorRecord(`https://www.instagram.com/reel/${wrongShortcode}/`, "instagram", "DOGnqc1DlIy")).reason, "supadata-mismatched-source");
 });
@@ -99,7 +99,12 @@ test("a TikTok response with the exact numeric post ID may omit only its URL", (
   assert.equal(parseSupadataMetadata(link, { ...withoutUrl, id: "7696611605374602519" }).reason, "supadata-mismatched-source");
   assert.equal(diagnoseSupadataSourceMatch(link, { ...withoutUrl, id: "7696611605374602519" }), "id");
   const instagram = parsePublicLink(instagramUrl); const instagramWithoutUrl = { ...vendorRecord(instagramUrl, "instagram", "DOGnqc1DlIy"), url: undefined };
-  assert.equal(parseSupadataMetadata(instagram, instagramWithoutUrl).reason, "supadata-mismatched-source");
+  assert.equal(parseSupadataMetadata(instagram, instagramWithoutUrl).status, "complete");
+  assert.equal(parseSupadataMetadata(instagram, { ...instagramWithoutUrl, url: null }).status, "complete");
+  assert.equal(diagnoseSupadataSourceMatch(instagram, instagramWithoutUrl), null);
+  assert.equal(parseSupadataMetadata(instagram, { ...instagramWithoutUrl, id: "DifferentPost9" }).reason, "supadata-mismatched-source");
+  assert.equal(parseSupadataMetadata(instagram, { ...instagramWithoutUrl, id: "12345678901234567890" }).reason, "supadata-mismatched-source");
+  assert.equal(parseSupadataMetadata(instagram, { ...instagramWithoutUrl, url: "" }).reason, "supadata-mismatched-source");
   assert.equal(parseSupadataMetadata(link, { ...withoutUrl, url: null }).reason, "supadata-mismatched-source");
 });
 
@@ -108,7 +113,7 @@ test("source-match diagnostics classify only the failed identity check and retai
   assert.equal(diagnoseSupadataSourceMatch(link, vendorRecord(tiktokUrl, "tiktok", "7696611605374602518")), null);
   assert.equal(diagnoseSupadataSourceMatch(link, vendorRecord(tiktokUrl, "instagram", "7696611605374602518")), "platform");
   const instagram = parsePublicLink(instagramUrl);
-  assert.equal(diagnoseSupadataSourceMatch(instagram, { platform: "instagram", id: "DOGnqc1DlIy" }), "missing-url");
+  assert.equal(diagnoseSupadataSourceMatch(instagram, { platform: "instagram", id: "DOGnqc1DlIy" }), null);
   assert.equal(diagnoseSupadataSourceMatch(link, { platform: "tiktok", url: tiktokUrl }), "missing-id");
   assert.equal(diagnoseSupadataSourceMatch(link, vendorRecord("https://not a URL", "tiktok", "7696611605374602518")), "malformed-url");
   assert.equal(diagnoseSupadataSourceMatch(link, vendorRecord("https://www.instagram.com/reel/DOGnqc1DlIy/", "tiktok", "7696611605374602518")), "url-platform");
@@ -135,10 +140,11 @@ test("server-only pilot diagnostics are default-off, require the exact gate, and
 test("the diagnostic fetcher reports sanitized Instagram identity shape before production parsing and can persist one verified response", async () => {
   const link = parsePublicLink(instagramUrl); const state = createMemoryTestState(); const repo = trackedRepository(userA, state);
   const saved = await capture({ sourceType: "link", content: instagramUrl, title: "My Instagram title", note: "My own note" }, repo);
+  const exactLiveShape = { ...vendorRecord(instagramUrl, "instagram", "DOGnqc1DlIy", "Weekend market flowers"), url: undefined };
   const fetcher = createSupadataDiagnosticFetcher({ env: { ...env, SUPADATA_DEV_DIAGNOSTICS: "true" }, fetch: async () =>
-    new Response(JSON.stringify(vendorRecord("https://www.instagram.com/p/DOGnqc1DlIy/", "instagram", "DOGnqc1DlIy", "Weekend market flowers")), { headers: { "content-type": "application/json" } }) });
+    new Response(JSON.stringify(exactLiveShape), { headers: { "content-type": "application/json" } }) });
   const result = await fetcher(link, userA); assert.ok(result); assert.equal(result.diagnostic?.condition, null);
-  assert.equal(result.diagnostic?.returnedIdRepresentation, "shortcode"); assert.equal(result.diagnostic?.returnedUrlIdentity, "exact");
+  assert.equal(result.diagnostic?.returnedIdRepresentation, "shortcode"); assert.equal(result.diagnostic?.returnedUrlIdentity, "missing");
   assert.equal(result.diagnostic?.identityFields, "verified"); assert.equal(result.diagnostic?.descriptionPresent, true);
   assert.equal(result.diagnostic?.creatorPresent, true); assert.equal(result.diagnostic?.tagsPresent, true); assert.equal(result.diagnostic?.thumbnailPresent, true);
   assert.equal(result.metadata?.status, "complete");
@@ -150,7 +156,9 @@ test("the diagnostic fetcher reports sanitized Instagram identity shape before p
 test("sanitized Instagram diagnostics distinguish every rejected identity shape without leaking provider content", () => {
   const link = parsePublicLink(instagramUrl); const diagnosticEnv = { ...env, SUPADATA_DEV_DIAGNOSTICS: "true" };
   const diagnose = (record: unknown) => pilotSupadataSourceDiagnostic(userA, link, record, diagnosticEnv)!;
-  assert.equal(diagnose({ platform: "instagram", id: "DOGnqc1DlIy" }).condition, "missing-url");
+  const exactMissingUrl = diagnose({ platform: "instagram", id: "DOGnqc1DlIy" });
+  assert.equal(exactMissingUrl.condition, null); assert.equal(exactMissingUrl.returnedUrlIdentity, "missing"); assert.equal(exactMissingUrl.identityFields, "verified");
+  assert.equal(diagnose({ platform: "instagram", id: "DifferentPost9" }).condition, "id");
   assert.equal(diagnose({ platform: "instagram", url: instagramUrl }).condition, "missing-id");
   assert.equal(diagnose(vendorRecord(instagramUrl, "tiktok", "DOGnqc1DlIy")).condition, "platform");
   assert.equal(diagnose(vendorRecord("https://not a URL", "instagram", "DOGnqc1DlIy")).condition, "malformed-url");
@@ -160,6 +168,10 @@ test("sanitized Instagram diagnostics distinguish every rejected identity shape 
   assert.equal(idMismatch.condition, "id"); assert.equal(idMismatch.returnedIdRepresentation, "unrecognized"); assert.equal(idMismatch.identityFields, "contradictory");
   const numericOther = diagnose(vendorRecord(instagramUrl, "instagram", "12345678901234567890"));
   assert.equal(numericOther.returnedIdRepresentation, "numeric-other"); assert.equal(numericOther.identityFields, "contradictory");
+  const sameCreatorDifferentReel = diagnose({ ...vendorRecord(instagramUrl, "instagram", "DifferentPost9"), url: undefined });
+  assert.equal(sameCreatorDifferentReel.condition, "id"); assert.equal(sameCreatorDifferentReel.identityFields, "incomplete");
+  assert.equal(diagnose({ ...vendorRecord(instagramUrl, "instagram", "DOGnqc1DlIy"), url: "" }).condition, "malformed-url");
+  assert.equal(diagnose({ ...vendorRecord(instagramUrl, "instagram", "DOGnqc1DlIy"), url: "https://example.com/reel/DOGnqc1DlIy/" }).condition, "url-platform");
 });
 
 test("mismatched, malformed, null-field and unsafe-thumbnail vendor responses fail honestly", () => {
