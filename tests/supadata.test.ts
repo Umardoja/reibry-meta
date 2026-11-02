@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { toModelEvidence } from "../src/lib/ai/meta/contracts.ts";
-import { createSupadataMetadataFetcher, parseSupadataMetadata, supadataGate } from "../src/lib/capture/supadata.ts";
+import { createSupadataMetadataFetcher, parseSupadataMetadata, supadataGate, supadataPilotAllows } from "../src/lib/capture/supadata.ts";
 import { capture, enrichSavedLink, type LinkEnricher } from "../src/lib/capture/service.ts";
 import { parsePublicLink } from "../src/lib/capture/url-policy.ts";
 import { presentMemory } from "../src/lib/memory/presentation.ts";
@@ -12,9 +12,10 @@ import { createMemoryTestState } from "./support/in-memory-memory-repository.ts"
 
 const userA = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const userB = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
-const tiktokUrl = "https://www.tiktok.com/@cake.maker/video/7311223344556677889";
-const instagramUrl = "https://www.instagram.com/reel/C1abcDEF/";
-const env = { SUPADATA_DEV_ENABLED: "true", SUPADATA_API_KEY: "not-a-real-key-123456", SUPADATA_DEV_USER_ID: userA };
+const tiktokUrl = "https://www.tiktok.com/@elsie.lizzy0/video/7696611605374602518";
+const instagramUrl = "https://www.instagram.com/reel/DOGnqc1DlIy/";
+const approvedIds = "tiktok:7696611605374602518,tiktok:7702502616080829717,instagram:DOGnqc1DlIy,instagram:Dd6nk3hNS7l";
+const env = { SUPADATA_DEV_ENABLED: "true", SUPADATA_API_KEY: "not-a-real-key-123456", SUPADATA_DEV_USER_ID: userA, SUPADATA_DEV_ALLOWED_CANONICAL_IDS: approvedIds };
 const primaryMissing: LinkEnricher = async () => ({ status: "partial", provider: "tiktok-oembed", reason: "provider-returned-no-title", provenance: {} });
 
 function vendorRecord(url: string, platform: "tiktok" | "instagram", id: string, description = "Butterfly birthday cake decoration with purple icing #cakeidea") {
@@ -29,18 +30,40 @@ test("Supadata is default-off and restricted to the one configured disposable de
   assert.equal(supadataGate(userA, { ...env, SUPADATA_API_KEY: undefined }), false);
 });
 
+test("the private pilot accepts exactly four canonical identities and fails closed for malformed, widened or short-link configuration", () => {
+  const approved = [tiktokUrl, "https://www.tiktok.com/@temizy_001/video/7702502616080829717", instagramUrl, "https://www.instagram.com/reel/Dd6nk3hNS7l/"];
+  for (const url of approved) assert.equal(supadataPilotAllows(userA, parsePublicLink(url), env), true, url);
+  assert.equal(supadataPilotAllows(userA, parsePublicLink("https://www.tiktok.com/@elsie.lizzy0/video/7696611605374602519"), env), false);
+  assert.equal(supadataPilotAllows(userB, parsePublicLink(tiktokUrl), env), false);
+  assert.equal(supadataPilotAllows(userA, parsePublicLink("https://vm.tiktok.com/ZMabc123/"), env), false);
+  assert.equal(supadataPilotAllows(userA, parsePublicLink(tiktokUrl), { ...env, SUPADATA_DEV_ALLOWED_CANONICAL_IDS: "tiktok:7696611605374602518" }), false);
+  assert.equal(supadataPilotAllows(userA, parsePublicLink(tiktokUrl), { ...env, SUPADATA_DEV_ALLOWED_CANONICAL_IDS: approvedIds + ",tiktok:7696611605374602519" }), false);
+  assert.equal(supadataPilotAllows(userA, parsePublicLink(tiktokUrl), { ...env, SUPADATA_DEV_ALLOWED_CANONICAL_IDS: undefined }), false);
+});
+
+test("the network fetcher cannot spend a pilot credit for an unapproved identity or malformed allowlist", async () => {
+  let calls = 0;
+  const fetcher = createSupadataMetadataFetcher({ env, fetch: async () => { calls++; throw new Error("must not fetch"); } });
+  assert.equal(await fetcher(parsePublicLink("https://www.tiktok.com/@elsie.lizzy0/video/7696611605374602519"), userA), null);
+  assert.equal(await fetcher(parsePublicLink("https://www.instagram.com/reel/CnotApproved1/"), userA), null);
+  assert.equal(await fetcher(parsePublicLink("https://vm.tiktok.com/ZMabc123/"), userA), null);
+  const malformed = createSupadataMetadataFetcher({ env: { ...env, SUPADATA_DEV_ALLOWED_CANONICAL_IDS: "tiktok:7696611605374602518" }, fetch: async () => { calls++; throw new Error("must not fetch"); } });
+  assert.equal(await malformed(parsePublicLink(tiktokUrl), userA), null);
+  assert.equal(calls, 0);
+});
+
 test("TikTok and Instagram metadata becomes bounded unverified external detail, never a claimed caption", () => {
-  const tikTok = parseSupadataMetadata(parsePublicLink(tiktokUrl), vendorRecord(tiktokUrl, "tiktok", "7311223344556677889"));
+  const tikTok = parseSupadataMetadata(parsePublicLink(tiktokUrl), vendorRecord(tiktokUrl, "tiktok", "7696611605374602518"));
   assert.equal(tikTok.provider, "supadata-unverified"); assert.equal(tikTok.status, "complete"); assert.match(tikTok.title ?? "", /^Saved TikTok details:/);
   assert.equal(tikTok.provenance.caption, "supadata-unverified"); assert.deepEqual(tikTok.hashtags, ["cakeidea", "birthday"]);
-  const instagram = parseSupadataMetadata(parsePublicLink(instagramUrl), vendorRecord(instagramUrl, "instagram", "C1abcDEF", "Weekend market flowers"));
+  const instagram = parseSupadataMetadata(parsePublicLink(instagramUrl), vendorRecord(instagramUrl, "instagram", "DOGnqc1DlIy", "Weekend market flowers"));
   assert.equal(instagram.caption, "Weekend market flowers"); assert.equal(instagram.thumbnailUrl, "https://cdn.example.net/cover.jpg");
 });
 
 test("mismatched, malformed, null-field and unsafe-thumbnail vendor responses fail honestly", () => {
   const link = parsePublicLink(tiktokUrl);
-  assert.equal(parseSupadataMetadata(link, vendorRecord(tiktokUrl, "instagram", "7311223344556677889")).reason, "supadata-mismatched-source");
-  assert.equal(parseSupadataMetadata(link, { platform: "tiktok", id: "7311223344556677889", url: tiktokUrl, title: null, description: null, author: null, media: { thumbnailUrl: "javascript:alert(1)" }, tags: null }).status, "unavailable");
+  assert.equal(parseSupadataMetadata(link, vendorRecord(tiktokUrl, "instagram", "7696611605374602518")).reason, "supadata-mismatched-source");
+  assert.equal(parseSupadataMetadata(link, { platform: "tiktok", id: "7696611605374602518", url: tiktokUrl, title: null, description: null, author: null, media: { thumbnailUrl: "javascript:alert(1)" }, tags: null }).status, "unavailable");
   assert.equal(parseSupadataMetadata(link, null).reason, "supadata-invalid-response");
 });
 
@@ -48,7 +71,7 @@ test("the fixed server-side client sends only the canonical URL, has no retry, a
   let calls = 0; let seen: URL | null = null;
   const fetcher = createSupadataMetadataFetcher({ env, fetch: async (input, init) => { calls++; seen = new URL(String(input));
     assert.equal(init?.method, "GET"); assert.equal(init?.redirect, "manual"); assert.equal(init?.credentials, "omit"); assert.ok(!String(input).includes("rawText"));
-    return new Response(JSON.stringify(vendorRecord(tiktokUrl, "tiktok", "7311223344556677889")), { headers: { "content-type": "application/json" } }); } });
+    return new Response(JSON.stringify(vendorRecord(tiktokUrl, "tiktok", "7696611605374602518")), { headers: { "content-type": "application/json" } }); } });
   const result = await fetcher(parsePublicLink(tiktokUrl), userA);
   assert.equal(calls, 1); const requested = seen as URL | null; assert.ok(requested); assert.equal(requested.origin, "https://api.supadata.ai"); assert.equal(requested.pathname, "/v1/metadata"); assert.equal(result?.caption?.includes("Butterfly"), true);
   const denied = await fetcher(parsePublicLink(tiktokUrl), userB); assert.equal(denied, null); assert.equal(calls, 1);
@@ -66,7 +89,7 @@ test("the fixed server-side client sends only the canonical URL, has no retry, a
 test("one owned saved Memory receives external details, remains searchable and never spends again on an ordinary re-share", async () => {
   const state = createMemoryTestState(); const repo = trackedRepository(userA, state); const saved = await capture({ sourceType: "link", content: tiktokUrl, title: "My chosen label", note: "My own note" }, repo);
   let calls = 0;
-  const fallback = async () => { calls++; return parseSupadataMetadata(parsePublicLink(tiktokUrl), vendorRecord(tiktokUrl, "tiktok", "7311223344556677889")); };
+  const fallback = async () => { calls++; return parseSupadataMetadata(parsePublicLink(tiktokUrl), vendorRecord(tiktokUrl, "tiktok", "7696611605374602518")); };
   const first = await enrichSavedLink(saved.memory.id, repo, createInMemoryEnrichmentWriter(userA, state), primaryMissing, 1_000, fallback);
   assert.equal(first.memory.id, saved.memory.id); assert.equal(first.memory.title, "My chosen label"); assert.equal(first.memory.rawText, "My own note"); assert.equal(first.memory.metadata.metadataProvider, "supadata-unverified"); assert.equal(first.memory.metadata.caption, "Butterfly birthday cake decoration with purple icing #cakeidea");
   assert.equal(rankMemories(await repo.searchCandidates(20), "butterfly purple cake decoration", 5).items[0]?.memoryId, saved.memory.id);
@@ -83,7 +106,7 @@ test("a safely resolved TikTok short link sends its canonical post to Supadata a
   const resolved = parsePublicLink(tiktokUrl); let received = "";
   const primary: LinkEnricher = async () => ({ status: "partial", provider: "tiktok-oembed", reason: "provider-returned-no-title", resolved, provenance: {} });
   const merged = await enrichSavedLink(short.memory.id, repo, createInMemoryEnrichmentWriter(userA, state), primary, 1_000, async link => {
-    received = link.normalized; return parseSupadataMetadata(link, vendorRecord(tiktokUrl, "tiktok", "7311223344556677889"));
+    received = link.normalized; return parseSupadataMetadata(link, vendorRecord(tiktokUrl, "tiktok", "7696611605374602518"));
   });
   assert.equal(received, tiktokUrl); assert.equal(merged.memory.id, full.memory.id); assert.equal(state.size, 1);
 });
@@ -95,7 +118,7 @@ test("concurrent detail refreshes share one optional provider request for the sa
   const fallback = async () => { calls++; return pending; };
   const first = enrichSavedLink(saved.memory.id, repo, createInMemoryEnrichmentWriter(userA, state), primaryMissing, 1_000, fallback);
   const second = enrichSavedLink(saved.memory.id, repo, createInMemoryEnrichmentWriter(userA, state), primaryMissing, 1_000, fallback);
-  resolve(parseSupadataMetadata(parsePublicLink(tiktokUrl), vendorRecord(tiktokUrl, "tiktok", "7311223344556677889")));
+  resolve(parseSupadataMetadata(parsePublicLink(tiktokUrl), vendorRecord(tiktokUrl, "tiktok", "7696611605374602518")));
   await Promise.all([first, second]); assert.equal(calls, 1);
 });
 

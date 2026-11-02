@@ -7,6 +7,13 @@ const TIMEOUT_MS = 5_000;
 const MAX_RESPONSE_BYTES = 65_536;
 const userIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const tagPattern = /^[\p{L}\p{N}_]{2,40}$/u;
+// This private pilot is intentionally pinned in code as well as configuration. A changed environment value cannot widen it.
+const approvedPilotIdentities = new Set([
+  "tiktok:7696611605374602518",
+  "tiktok:7702502616080829717",
+  "instagram:DOGnqc1DlIy",
+  "instagram:Dd6nk3hNS7l",
+]);
 
 export type SupadataDependencies = { env: Record<string, string | undefined>; fetch: typeof fetch; timeoutMs?: number };
 export type SupadataMetadataFetcher = (link: ParsedCaptureUrl, ownerId: string) => Promise<MetadataResult | null>;
@@ -17,6 +24,20 @@ export function supadataGate(ownerId: string, env: Record<string, string | undef
   const key = env.SUPADATA_API_KEY?.trim() ?? "";
   const allowedUser = env.SUPADATA_DEV_USER_ID?.trim() ?? "";
   return env.SUPADATA_DEV_ENABLED === "true" && key.length >= 16 && userIdPattern.test(allowedUser) && ownerId === allowedUser;
+}
+function configuredPilotIdentities(env: Record<string, string | undefined>) {
+  const raw = env.SUPADATA_DEV_ALLOWED_CANONICAL_IDS;
+  if (!raw || raw.length > 512) return null;
+  const values = raw.split(",").map(value => value.trim());
+  if (!values.length || values.some(value => !/^(tiktok:\d{10,25}|instagram:[A-Za-z0-9_-]{5,64})$/.test(value))) return null;
+  const configured = new Set(values);
+  if (configured.size !== approvedPilotIdentities.size || values.length !== configured.size) return null;
+  return [...approvedPilotIdentities].every(value => configured.has(value)) ? configured : null;
+}
+/** Requires both the exact disposable user and the four hard-pinned canonical pilot identities. */
+export function supadataPilotAllows(ownerId: string, link: ParsedCaptureUrl, env: Record<string, string | undefined>) {
+  const configured = configuredPilotIdentities(env);
+  return supadataGate(ownerId, env) && !link.shortLink && !!link.postId && !!configured && configured.has(link.identity);
 }
 
 function failure(reason: string): MetadataResult {
@@ -95,7 +116,7 @@ export function parseSupadataMetadata(link: ParsedCaptureUrl, value: unknown): M
 /** Calls one fixed vendor endpoint only after the exact authenticated development user passed the default-off gate. No retry. */
 export function createSupadataMetadataFetcher(dependencies: SupadataDependencies = defaultDependencies): SupadataMetadataFetcher {
   return async (link, ownerId) => {
-    if (!supadataGate(ownerId, dependencies.env) || !["tiktok", "instagram"].includes(link.platform) || !link.postId || link.shortLink) return null;
+    if (!supadataPilotAllows(ownerId, link, dependencies.env)) return null;
     const controller = new AbortController(); const timer = setTimeout(() => controller.abort(), dependencies.timeoutMs ?? TIMEOUT_MS);
     try {
       const url = new URL(ENDPOINT); url.searchParams.set("url", link.normalized);

@@ -570,3 +570,11 @@
 - Provenance: vendor descriptions are labelled retrieved external details with origin unverified; they are never claimed as creator captions, transcripts, titles, or video understanding. Public release remains disabled pending the Stage 12K-4 vendor/right-to-use blockers.
 - Live status: no Supadata, Meta, or hosted Supabase request/write occurred. Required private pilot variables are absent and the prepared migration is not applied; TikTok/Instagram hosted persistence is therefore unverified.
 - Validation: lint PASS; typecheck PASS; 315/315 tests PASS across all 23 discovered test modules; `git diff --check` PASS. Turbopack compiled successfully, but final build sign-off is blocked by a pre-existing active local Next dev/build process holding `.next` state. Push status: NOT PUSHED.
+
+## Stage 12M-1 - Guarded live Supadata pilot
+
+- Date: 2026-11-02 (Africa/Lagos). Applied the already-reviewed `20261102000000_supadata_unverified_metadata.sql` only after read-only confirmation that the disposable project's 11 prior migrations, trusted writer, service-role-only ACL, and Memories forced RLS matched expectations. Post-apply remote history contains all 12 migrations and the security checks remained true.
+- Added a server-only four-identity private-pilot allowlist. It requires exact User A, an explicit enabled flag, an exact configured set matching the four hard-pinned canonical IDs, and a canonical non-short source. Non-approved URLs make zero provider requests.
+- Live: one app details request per approved owned Memory, four total; no retry. All four persisted `supadata-mismatched-source` as unavailable. Neither TikTok nor Instagram gained usable description or thumbnail, so the pilot is PARTIAL and public release remains disabled.
+- Post-pilot: flag returned to false and the local server was restarted. User B received 404 for User A read/details; each identity remained one Memory; existing YouTube metadata stayed intact. No Meta, transcript, extract, deployment, push, or original-repository operation occurred.
+- Validation: lint PASS; typecheck PASS; 317/317 tests PASS; `git diff --check` PASS. Optimized-build compilation started with the flag disabled, but the environment did not return a terminal build status before the local server was restored; final build sign-off remains unverified.
