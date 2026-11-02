@@ -25,9 +25,9 @@ function needsSupplementalMetadata(value: MetadataResult) {
 function supadataAlreadyAttempted(memory: Memory) {
   return memory.metadata.metadataProvider === "supadata-unverified";
 }
-function enrichWithSupadataOnce(memoryId: string, ownerId: string, link: ParsedCaptureUrl, supplemental: SupadataMetadataFetcher) {
+function enrichWithSupadataOnce(memoryId: string, ownerId: string, link: ParsedCaptureUrl, supplemental: SupadataMetadataFetcher, signal: AbortSignal) {
   const key = `${ownerId}:${memoryId}`; const active = supadataInFlight.get(key); if (active) return active;
-  const work = supplemental(link, ownerId).finally(() => { if (supadataInFlight.get(key) === work) supadataInFlight.delete(key); });
+  const work = supplemental(link, ownerId, signal).finally(() => { if (supadataInFlight.get(key) === work) supadataInFlight.delete(key); });
   supadataInFlight.set(key, work); return work;
 }
 function key(value: string) { return createHash("sha256").update(value, "utf8").digest("hex"); }
@@ -39,11 +39,11 @@ async function withinBudget(work: Promise<MetadataResult>, budgetMs: number): Pr
   try { return await Promise.race([work.catch((): MetadataResult => ({ status: "unavailable", provider: null, reason: "provider-error", provenance: {} })), late]); }
   finally { clearTimeout(timer); }
 }
-async function withinOptionalBudget(work: Promise<MetadataResult | null>, budgetMs: number): Promise<MetadataResult | null> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const late = new Promise<null>(resolve => { timer = setTimeout(() => resolve(null), budgetMs); });
-  try { return await Promise.race([work.catch(() => null), late]); }
-  finally { clearTimeout(timer); }
+async function withinOptionalBudget(work: (signal: AbortSignal) => Promise<MetadataResult | null>, budgetMs: number): Promise<MetadataResult | null> {
+  const controller = new AbortController(); let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<MetadataResult>(resolve => { timer = setTimeout(() => { controller.abort(); resolve({ status: "timed-out", provider: "supadata-unverified", reason: "supadata-timeout", provenance: {} }); }, budgetMs); });
+  try { return await Promise.race([work(controller.signal).catch((): MetadataResult | null => null), late]); }
+  finally { clearTimeout(timer); controller.abort(); }
 }
 const platformLabel: Record<ParsedCaptureUrl["platform"], string> = { youtube: "YouTube", tiktok: "TikTok", instagram: "Instagram", web: "Web" };
 function placeholderTitle(link: ParsedCaptureUrl) {
@@ -124,14 +124,15 @@ export async function enrichSavedLink(memoryId: string, repository: MemoryReposi
   supplemental: SupadataMetadataFetcher = supadataMetadata) {
   const owned = await repository.read(memoryId);
   if (owned.sourceType !== "link" || !owned.sourceUrl) return { memory: owned, enrichment: { status: "unsupported", provider: null } as CaptureEnrichment };
+  const startedAt = performance.now();
   const parsed = parsePublicLink(owned.sourceUrl);
   let metadata = await withinBudget(enrich(parsed), budgetMs);
   // Only the approved development owner can reach the optional provider, and only after the normal platform path lacks useful fields.
   // An attempted Supadata lookup is persisted as its own provider state so normal re-shares cannot spend another credit.
   if (!supadataAlreadyAttempted(owned) && needsSupplementalMetadata(metadata)) {
     const target = metadata.resolved ?? parsed;
-    const remaining = Math.max(1, budgetMs - 1_000);
-    const external = await withinOptionalBudget(enrichWithSupadataOnce(owned.id, repository.ownerId, target, supplemental), remaining);
+    const remaining = Math.max(0, budgetMs - (performance.now() - startedAt));
+    const external = remaining > 0 ? await withinOptionalBudget(signal => enrichWithSupadataOnce(owned.id, repository.ownerId, target, supplemental, signal), remaining) : null;
     if (external) metadata = metadata.resolved ? { ...external, resolved: metadata.resolved } : external;
   }
   const enrichment = { status: metadata.status, provider: metadata.provider, ...(metadata.reason ? { reason: metadata.reason } : {}) } as CaptureEnrichment;

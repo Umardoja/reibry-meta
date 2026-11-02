@@ -587,3 +587,13 @@
 - Added a server-only, default-off source-shape diagnostic helper. It requires the same exact owner and four-identity gate plus a dedicated diagnostic flag, logs nothing, and never exposes provider text, raw response bodies, credentials, cookies, or query strings.
 - Documented the separate details-route timing risk: current sequential native-plus-optional budgets can exceed the route bound. No timeout semantics changed in this focused identity repair; a future fix must use one cancellable shared deadline without affecting save-first capture.
 - Validation: lint 0 errors (4 pre-existing warnings); typecheck PASS; 320/320 tests PASS; production build PASS (19 static pages and route manifest); `git diff --check` PASS. Push status: NOT PUSHED.
+
+## Stage 12M-3 - One-shot Supadata identity diagnosis
+
+- Date: 2026-11-02 (Africa/Lagos). Parent: `05617b75636c3c8cc356a1d95c4f8478fdac3bff`. One separately authorized, locally marker-protected metadata request was made for exactly `tiktok:7696611605374602518`; the normal REIBRY enrichment route and its persisted one-attempt marker were not retried or bypassed.
+- Result: HTTP 200 in 3,671 ms with exact TikTok platform and numeric post ID, but no returned `url`. Description, creator, and thumbnail fields were present; no raw response values were stored. This proved the prior `supadata-mismatched-source` result was caused by the strict missing-URL check for this response.
+- Repair: a missing URL is accepted only for TikTok when the returned platform and exact numeric ID already bind the response to the canonical saved post. All wrong/missing/contradictory identity cases remain fail-closed; Instagram is unchanged.
+- Reliability: optional enrichment now uses a shared remaining budget and abort signal. A begun optional lookup that times out is recorded as `supadata-timeout`, preserving the no-repeat-charge marker without affecting save-first capture.
+- Persistence: the diagnostic response was intentionally ephemeral and no Memory was changed. A future approved application integration call is required to persist and verify it. The Supadata application flag remains false.
+- Validation: focused Supadata tests 17/17 PASS; lint PASS with 6 warnings and no errors; production build PASS (19 static pages); reviewed `git diff --check` PASS. The full suite reached 321/322 PASS because its loopback smoke server was not reachable despite reporting ready, and normal `next typegen` remains blocked by a generated-file EPERM; direct non-incremental TypeScript checking passed.
+- External safety: no migration, hosted write, Meta call, transcript/extract, deployment, Git remote activity, or original REIBRY operation occurred. Push status: NOT PUSHED.

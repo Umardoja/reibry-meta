@@ -16,7 +16,7 @@ const approvedPilotIdentities = new Set([
 ]);
 
 export type SupadataDependencies = { env: Record<string, string | undefined>; fetch: typeof fetch; timeoutMs?: number };
-export type SupadataMetadataFetcher = (link: ParsedCaptureUrl, ownerId: string) => Promise<MetadataResult | null>;
+export type SupadataMetadataFetcher = (link: ParsedCaptureUrl, ownerId: string, signal?: AbortSignal) => Promise<MetadataResult | null>;
 /** Safe, field-free source-check categories for an owner-approved future diagnostic call. Never logged automatically. */
 export type SupadataSourceMatchDiagnostic = "platform" | "missing-url" | "missing-id" | "malformed-url" | "url-platform" | "url-identity" | "id";
 export type SupadataPilotSourceDiagnostic = {
@@ -97,8 +97,15 @@ async function readJson(response: Response, signal: AbortSignal) {
 type SourceMatch = { returned: ParsedCaptureUrl; diagnostic: null } | { returned: null; diagnostic: SupadataSourceMatchDiagnostic };
 function sourceMatch(link: ParsedCaptureUrl, data: Record<string, unknown>): SourceMatch {
   if (data.platform !== link.platform) return { returned: null, diagnostic: "platform" };
-  if (typeof data.url !== "string") return { returned: null, diagnostic: "missing-url" };
   if (typeof data.id !== "string") return { returned: null, diagnostic: "missing-id" };
+  // A live, one-shot TikTok response on 2026-11-02 had the documented platform and exact numeric video ID but omitted url.
+  // For TikTok only, that globally scoped numeric ID is enough to bind the response to an already canonical owner Memory.
+  // A null, malformed, contradictory, or non-TikTok URL never takes this path.
+  if (data.url === undefined) {
+    if (link.platform === "tiktok" && link.postId && data.id === link.postId) return { returned: link, diagnostic: null };
+    return { returned: null, diagnostic: link.postId && data.id !== link.postId ? "id" : "missing-url" };
+  }
+  if (typeof data.url !== "string") return { returned: null, diagnostic: "missing-url" };
   let returned: ParsedCaptureUrl;
   try { returned = parsePublicLink(data.url); } catch { return { returned: null, diagnostic: "malformed-url" }; }
   if (returned.platform !== link.platform) return { returned: null, diagnostic: "url-platform" };
@@ -169,9 +176,12 @@ export function parseSupadataMetadata(link: ParsedCaptureUrl, value: unknown): M
 
 /** Calls one fixed vendor endpoint only after the exact authenticated development user passed the default-off gate. No retry. */
 export function createSupadataMetadataFetcher(dependencies: SupadataDependencies = defaultDependencies): SupadataMetadataFetcher {
-  return async (link, ownerId) => {
+  return async (link, ownerId, requestSignal) => {
     if (!supadataPilotAllows(ownerId, link, dependencies.env)) return null;
-    const controller = new AbortController(); const timer = setTimeout(() => controller.abort(), dependencies.timeoutMs ?? TIMEOUT_MS);
+    if (requestSignal?.aborted) return failure("supadata-timeout");
+    const controller = new AbortController(); const cancel = () => controller.abort();
+    requestSignal?.addEventListener("abort", cancel, { once: true });
+    const timer = setTimeout(cancel, dependencies.timeoutMs ?? TIMEOUT_MS);
     try {
       const url = new URL(ENDPOINT); url.searchParams.set("url", link.normalized);
       const response = await dependencies.fetch(url, { method: "GET", redirect: "manual", cache: "no-store", credentials: "omit", referrerPolicy: "no-referrer",
@@ -181,6 +191,6 @@ export function createSupadataMetadataFetcher(dependencies: SupadataDependencies
       if (!response.headers.get("content-type")?.toLowerCase().startsWith("application/json")) return failure("supadata-invalid-response");
       return parseSupadataMetadata(link, await readJson(response, controller.signal));
     } catch (error) { return failure(error instanceof Error && error.name === "AbortError" ? "supadata-timeout" : "supadata-unavailable"); }
-    finally { clearTimeout(timer); controller.abort(); }
+    finally { clearTimeout(timer); requestSignal?.removeEventListener("abort", cancel); controller.abort(); }
   };
 }

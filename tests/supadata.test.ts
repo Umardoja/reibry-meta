@@ -69,11 +69,24 @@ test("documented equivalent mobile TikTok and Instagram post URLs retain strict 
   assert.equal(parseSupadataMetadata(instagram, vendorRecord(postUrl, "instagram", "DOGnqc1DlIy")).status, "complete");
 });
 
+test("a TikTok response with the exact numeric post ID may omit only its URL", () => {
+  const link = parsePublicLink(tiktokUrl); const withoutUrl = { ...vendorRecord(tiktokUrl, "tiktok", "7696611605374602518"), url: undefined };
+  const accepted = parseSupadataMetadata(link, withoutUrl);
+  assert.equal(accepted.status, "complete"); assert.equal(accepted.canonicalUrl, link.normalized);
+  assert.equal(diagnoseSupadataSourceMatch(link, withoutUrl), null);
+  assert.equal(parseSupadataMetadata(link, { ...withoutUrl, id: "7696611605374602519" }).reason, "supadata-mismatched-source");
+  assert.equal(diagnoseSupadataSourceMatch(link, { ...withoutUrl, id: "7696611605374602519" }), "id");
+  const instagram = parsePublicLink(instagramUrl); const instagramWithoutUrl = { ...vendorRecord(instagramUrl, "instagram", "DOGnqc1DlIy"), url: undefined };
+  assert.equal(parseSupadataMetadata(instagram, instagramWithoutUrl).reason, "supadata-mismatched-source");
+  assert.equal(parseSupadataMetadata(link, { ...withoutUrl, url: null }).reason, "supadata-mismatched-source");
+});
+
 test("source-match diagnostics classify only the failed identity check and retain all negative rejections", () => {
   const link = parsePublicLink(tiktokUrl);
   assert.equal(diagnoseSupadataSourceMatch(link, vendorRecord(tiktokUrl, "tiktok", "7696611605374602518")), null);
   assert.equal(diagnoseSupadataSourceMatch(link, vendorRecord(tiktokUrl, "instagram", "7696611605374602518")), "platform");
-  assert.equal(diagnoseSupadataSourceMatch(link, { platform: "tiktok", id: "7696611605374602518" }), "missing-url");
+  const instagram = parsePublicLink(instagramUrl);
+  assert.equal(diagnoseSupadataSourceMatch(instagram, { platform: "instagram", id: "DOGnqc1DlIy" }), "missing-url");
   assert.equal(diagnoseSupadataSourceMatch(link, { platform: "tiktok", url: tiktokUrl }), "missing-id");
   assert.equal(diagnoseSupadataSourceMatch(link, vendorRecord("https://not a URL", "tiktok", "7696611605374602518")), "malformed-url");
   assert.equal(diagnoseSupadataSourceMatch(link, vendorRecord("https://www.instagram.com/reel/DOGnqc1DlIy/", "tiktok", "7696611605374602518")), "url-platform");
@@ -156,6 +169,20 @@ test("concurrent detail refreshes share one optional provider request for the sa
   const second = enrichSavedLink(saved.memory.id, repo, createInMemoryEnrichmentWriter(userA, state), primaryMissing, 1_000, fallback);
   resolve(parseSupadataMetadata(parsePublicLink(tiktokUrl), vendorRecord(tiktokUrl, "tiktok", "7696611605374602518")));
   await Promise.all([first, second]); assert.equal(calls, 1);
+});
+
+test("optional metadata shares the details budget, aborts safely, and records one attempt", async () => {
+  const state = createMemoryTestState(); const repo = trackedRepository(userA, state); const saved = await capture({ sourceType: "link", content: tiktokUrl }, repo);
+  let calls = 0; let aborted = false;
+  const primary: LinkEnricher = async () => { await new Promise(resolve => setTimeout(resolve, 20)); return { status: "partial", provider: "tiktok-oembed", reason: "provider-returned-no-title", provenance: {} }; };
+  const fallback = async (_link: ReturnType<typeof parsePublicLink>, _owner: string, signal?: AbortSignal) => {
+    calls++;
+    return await new Promise<ReturnType<typeof parseSupadataMetadata>>(resolve => signal?.addEventListener("abort", () => { aborted = true; resolve({ status: "timed-out", provider: "supadata-unverified", reason: "supadata-timeout", provenance: {} }); }, { once: true }));
+  };
+  const result = await enrichSavedLink(saved.memory.id, repo, createInMemoryEnrichmentWriter(userA, state), primary, 100, fallback);
+  assert.equal(calls, 1); assert.equal(aborted, true); assert.equal(result.enrichment.reason, "supadata-timeout"); assert.equal(result.memory.metadata.metadataProvider, "supadata-unverified");
+  await enrichSavedLink(saved.memory.id, repo, createInMemoryEnrichmentWriter(userA, state), primary, 100, fallback);
+  assert.equal(calls, 1, "the persisted timeout prevents a second charged fallback");
 });
 
 test("existing useful YouTube metadata is never sent to the optional provider", async () => {
