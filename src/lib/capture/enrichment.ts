@@ -7,9 +7,9 @@ const tiktokShareHosts = new Set(["vm.tiktok.com", "vt.tiktok.com", "www.tiktok.
 /** Per-host budgets keep a slow provider from delaying the save; capture() also applies an overall cap. */
 export const ENRICHMENT_TIMEOUTS_MS = { youtube: 1_200, tiktok: 1_200, tiktokShortLink: 1_000, web: 1_500 } as const;
 
-export type MetadataProvider = "youtube-oembed" | "tiktok-oembed" | "page-metadata" | null;
+export type MetadataProvider = "youtube-oembed" | "tiktok-oembed" | "page-metadata" | "supadata-unverified" | null;
 /** Where each stored fact came from. Provider metadata is never presented as watched video, transcript or AI analysis. */
-export type FieldSource = "user" | "url" | "youtube-oembed" | "tiktok-oembed" | "page-metadata" | "reibry-placeholder";
+export type FieldSource = "user" | "url" | "youtube-oembed" | "tiktok-oembed" | "page-metadata" | "supadata-unverified" | "reibry-placeholder";
 export type MetadataResult = {
   status: "complete" | "partial" | "unavailable" | "unsupported" | "timed-out" | "pending"; provider: MetadataProvider; reason?: string;
   title?: string; author?: string; authorUrl?: string; caption?: string; thumbnailUrl?: string; publishedAt?: string;

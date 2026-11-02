@@ -149,7 +149,7 @@ test("capture UI: single submission, honest save/detail states, retry, and share
   const page = await readFile("src/app/capture/page.tsx", "utf8"); const details = await readFile("src/components/capture/source-details.tsx", "utf8");
   for (const text of ["if (inFlight.current) return", "Saving…", "Details ready", "Limited details", "Retry getting details", "Getting details…", "Already saved", "void getDetails(saved)", "if (detailsInFlight.current) return"]) assert.ok(form.includes(text), text);
   assert.doesNotMatch(handoff, /fetch\(/, "a signed-out share is never saved automatically"); assert.match(page, /Nothing is saved without the user's tap/);
-  for (const text of ["Open original", "REIBRY couldn&apos;t retrieve a description.", "nothing was watched or transcribed", "referrerPolicy=\"no-referrer\""]) assert.ok(details.includes(text), text);
+  for (const text of ["Open original", "REIBRY couldn&apos;t retrieve a description.", "Nothing was watched or transcribed.", "referrerPolicy=\"no-referrer\""]) assert.ok(details.includes(text), text);
   assert.doesNotMatch(details, /dangerouslySetInnerHTML/);
 });
 test("live 12I defects: a repeated share fills a missing note and upgrades a placeholder title, never overwriting the user's words", async () => {

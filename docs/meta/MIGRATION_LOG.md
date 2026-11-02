@@ -559,3 +559,14 @@
 - **Spend:** $0.015 measured, ≤ $0.046 worst case.
 - **Validation:** lint has 0 errors (4 earlier warnings); typecheck PASS; 269/269 tests; build PASS; `git diff --check` PASS; no secrets in the browser bundles.
 - **Push status:** NOT PUSHED.
+
+## Stage 12M - Private social Memory enrichment prototype
+
+- Date: 2026-11-02 (Africa/Lagos).
+- Parent: `a999a686bec8f3b67057dddd021e417af8c72a50`. The original REIBRY repository was read-only; pre-existing `.env.example`, ignored `.env.local`, recovery report, and unrelated untracked files were preserved.
+- Added a server-only, default-off Supadata metadata adapter for canonical public TikTok and Instagram post links. It has an exact disposable-user gate, fixed endpoint, bounded response, timeout, no retry, strict result identity validation, and no provider SDK.
+- Existing save-first capture, owner-scoped trusted enrichment, Memory retrieval, Home citations, user title/note preservation, and YouTube enrichment remain the authoritative paths. Supadata results update the same Memory only after native metadata is insufficient; no new schema fields are required.
+- Prepared but did not apply `20261102000000_supadata_unverified_metadata.sql`. It retains the trusted service-role-only writer while adding only the explicit unverified-provider provenance values.
+- Provenance: vendor descriptions are labelled retrieved external details with origin unverified; they are never claimed as creator captions, transcripts, titles, or video understanding. Public release remains disabled pending the Stage 12K-4 vendor/right-to-use blockers.
+- Live status: no Supadata, Meta, or hosted Supabase request/write occurred. Required private pilot variables are absent and the prepared migration is not applied; TikTok/Instagram hosted persistence is therefore unverified.
+- Validation: lint PASS; typecheck PASS; 315/315 tests PASS across all 23 discovered test modules; `git diff --check` PASS. Turbopack compiled successfully, but final build sign-off is blocked by a pre-existing active local Next dev/build process holding `.next` state. Push status: NOT PUSHED.

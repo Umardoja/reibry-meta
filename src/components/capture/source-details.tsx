@@ -18,6 +18,7 @@ const reasons: Record<string, string> = {
   "provider-error": "The platform didn't return usable details.",
 };
 const text = (value: unknown) => typeof value === "string" && value.trim() ? value.trim() : null;
+const isSupadataUnverified = (meta: Memory["metadata"], field: string) => !!meta.provenance && typeof meta.provenance === "object" && !Array.isArray(meta.provenance) && meta.provenance[field] === "supadata-unverified";
 
 export function limitationText(status: unknown, reason: unknown) {
   if (status === "complete") return null;
@@ -29,7 +30,7 @@ export function SourceDetails({ memory }: { memory: Memory }) {
   if (memory.sourceType !== "link" || !memory.sourceUrl) return null;
   const meta = memory.metadata; const platform = platforms[String(meta.platform)] ?? "Web";
   const thumbnail = text(meta.thumbnailUrl); const creator = text(meta.author); const caption = text(meta.caption); const site = text(meta.siteName);
-  const limitation = limitationText(meta.enrichment, meta.enrichmentReason);
+  const limitation = limitationText(meta.enrichment, meta.enrichmentReason); const unverified = isSupadataUnverified(meta, "caption") || isSupadataUnverified(meta, "author") || meta.metadataProvider === "supadata-unverified";
   return <section className="source-details" aria-label="Saved source">
     {/* Provider covers come from arbitrary platform hosts, so a plain no-referrer <img> is used instead of next/image remote patterns. */}
     {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -38,7 +39,7 @@ export function SourceDetails({ memory }: { memory: Memory }) {
       <p className="source-line"><strong>{platform}</strong>{creator && <> · {creator}</>}{site && platform === "Web" && <> · {site}</>}</p>
       {caption ? <p className="source-caption">{caption}</p> : <p className="field-hint">REIBRY couldn&apos;t retrieve a description.</p>}
       {memory.rawText && <p className="source-note"><span className="field-hint">Your note:</span> {memory.rawText}</p>}
-      <p className="field-hint">Saved {new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(new Date(memory.createdAt))}. Details come from the {platform === "Web" ? "page" : platform} link only; nothing was watched or transcribed.</p>
+      <p className="field-hint">Saved {new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(new Date(memory.createdAt))}. {unverified ? "Details were retrieved from Supadata; their source origin has not been verified." : `Details come from the ${platform === "Web" ? "page" : platform} link only;`} Nothing was watched or transcribed.</p>
       {limitation && <p className="field-hint">{limitation}</p>}
       <a className="button btn-ghost source-open" href={memory.sourceUrl} target="_blank" rel="noopener noreferrer">Open original</a>
     </div>

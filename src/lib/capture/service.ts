@@ -4,6 +4,7 @@ import type { JsonValue, Memory } from "../memory/contracts.ts";
 import { MemoryRepositoryFailure, type MemoryRepository } from "../memory/repository.ts";
 import { deterministicTitle, type CaptureInput } from "./contracts.ts";
 import { enrichLink, type FieldSource, type MetadataResult } from "./enrichment.ts";
+import { createSupadataMetadataFetcher, type SupadataMetadataFetcher } from "./supadata.ts";
 import type { EnrichmentWriter } from "./trusted-enrichment.ts";
 import { cleanSharedText } from "./share.ts";
 import { parsePublicLink, type ParsedCaptureUrl } from "./url-policy.ts";
@@ -16,6 +17,19 @@ export type CaptureResult = { memory: Memory; duplicate: boolean; enrichment: Ca
 const enrichmentState = (memory: Memory): CaptureEnrichment["status"] => { const state = memory.metadata.enrichment;
   return state === "complete" || state === "partial" || state === "unavailable" || state === "timed-out" ? state : "pending"; };
 export type LinkEnricher = (link: ParsedCaptureUrl) => Promise<MetadataResult>;
+const supadataMetadata = createSupadataMetadataFetcher();
+const supadataInFlight = new Map<string, Promise<MetadataResult | null>>();
+function needsSupplementalMetadata(value: MetadataResult) {
+  return !value.title && !value.caption && !value.thumbnailUrl;
+}
+function supadataAlreadyAttempted(memory: Memory) {
+  return memory.metadata.metadataProvider === "supadata-unverified";
+}
+function enrichWithSupadataOnce(memoryId: string, ownerId: string, link: ParsedCaptureUrl, supplemental: SupadataMetadataFetcher) {
+  const key = `${ownerId}:${memoryId}`; const active = supadataInFlight.get(key); if (active) return active;
+  const work = supplemental(link, ownerId).finally(() => { if (supadataInFlight.get(key) === work) supadataInFlight.delete(key); });
+  supadataInFlight.set(key, work); return work;
+}
 function key(value: string) { return createHash("sha256").update(value, "utf8").digest("hex"); }
 function noteTitle(content: string) { return deterministicTitle(content.split(/\r?\n/, 1)[0] || "Saved note"); }
 
@@ -23,6 +37,12 @@ async function withinBudget(work: Promise<MetadataResult>, budgetMs: number): Pr
   let timer: ReturnType<typeof setTimeout> | undefined;
   const late = new Promise<MetadataResult>(resolve => { timer = setTimeout(() => resolve({ status: "timed-out", provider: null, reason: "provider-timeout", provenance: {} }), budgetMs); });
   try { return await Promise.race([work.catch((): MetadataResult => ({ status: "unavailable", provider: null, reason: "provider-error", provenance: {} })), late]); }
+  finally { clearTimeout(timer); }
+}
+async function withinOptionalBudget(work: Promise<MetadataResult | null>, budgetMs: number): Promise<MetadataResult | null> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<null>(resolve => { timer = setTimeout(() => resolve(null), budgetMs); });
+  try { return await Promise.race([work.catch(() => null), late]); }
   finally { clearTimeout(timer); }
 }
 const platformLabel: Record<ParsedCaptureUrl["platform"], string> = { youtube: "YouTube", tiktok: "TikTok", instagram: "Instagram", web: "Web" };
@@ -100,10 +120,20 @@ export function enrichmentDetails(metadata: MetadataResult): Record<string, Json
  * writer. Reading through the owner-bound repository first proves ownership; the database function re-checks it.
  */
 export async function enrichSavedLink(memoryId: string, repository: MemoryRepository, writer: EnrichmentWriter,
-  enrich: LinkEnricher = link => enrichLink(link, { timeoutMs: ENRICHMENT_BUDGET_MS - 1_000 }), budgetMs = ENRICHMENT_BUDGET_MS) {
+  enrich: LinkEnricher = link => enrichLink(link, { timeoutMs: ENRICHMENT_BUDGET_MS - 1_000 }), budgetMs = ENRICHMENT_BUDGET_MS,
+  supplemental: SupadataMetadataFetcher = supadataMetadata) {
   const owned = await repository.read(memoryId);
   if (owned.sourceType !== "link" || !owned.sourceUrl) return { memory: owned, enrichment: { status: "unsupported", provider: null } as CaptureEnrichment };
-  const metadata = await withinBudget(enrich(parsePublicLink(owned.sourceUrl)), budgetMs);
+  const parsed = parsePublicLink(owned.sourceUrl);
+  let metadata = await withinBudget(enrich(parsed), budgetMs);
+  // Only the approved development owner can reach the optional provider, and only after the normal platform path lacks useful fields.
+  // An attempted Supadata lookup is persisted as its own provider state so normal re-shares cannot spend another credit.
+  if (!supadataAlreadyAttempted(owned) && needsSupplementalMetadata(metadata)) {
+    const target = metadata.resolved ?? parsed;
+    const remaining = Math.max(1, budgetMs - 1_000);
+    const external = await withinOptionalBudget(enrichWithSupadataOnce(owned.id, repository.ownerId, target, supplemental), remaining);
+    if (external) metadata = metadata.resolved ? { ...external, resolved: metadata.resolved } : external;
+  }
   const enrichment = { status: metadata.status, provider: metadata.provider, ...(metadata.reason ? { reason: metadata.reason } : {}) } as CaptureEnrichment;
   // A TikTok share link resolved (by the bounded, SSRF-safe redirect resolver) to a post this user already saved: same verified post ID,
   // so the two are one Memory. The OLDER Memory is kept; the other's note and user title fill only what the kept one lacks.

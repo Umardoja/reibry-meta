@@ -22,7 +22,7 @@ export type RetrievalItem = {
   match: { reason: string; score: number; fields: EvidenceField[] };
   /** Captured-link details with their origin: provider/page metadata vs the user's own note. Never a transcript or visual analysis. */
   /** caption: from the platform; sharedWithLink: words the share sheet sent with the link (Stage 12K); userNote: the user's own words. */
-  sourceDetails?: { platform: string | null; creator: string | null; caption: string | null; sharedWithLink?: string | null; userNote: string | null } | null;
+  sourceDetails?: { platform: string | null; creator: string | null; caption: string | null; captionOrigin?: "platform-or-page" | "supadata-unverified" | null; sharedWithLink?: string | null; userNote: string | null } | null;
   /** Video Memories only. */
   video?: RetrievalVideoEvidence | null;
   /** When the Memory was saved, so "the course I just saved" can be resolved by recency. */

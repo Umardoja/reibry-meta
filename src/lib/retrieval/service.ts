@@ -41,7 +41,9 @@ function videoEvidence(memory: Memory): RetrievalVideoEvidence | null {
 function sourceDetails(memory: Memory): RetrievalItem["sourceDetails"] {
   if (memory.sourceType === "video") return { platform: null, creator: null, caption: null, sharedWithLink: null, userNote: memory.rawText ? memory.rawText.trim().slice(0, 280) : null };
   if (memory.sourceType !== "link") return null;
-  return { platform: text(memory.metadata.platform, 40), creator: text(memory.metadata.author, 120), caption: text(memory.metadata.caption, 280),
+  const provenance = memory.metadata.provenance;
+  const captionOrigin = provenance && typeof provenance === "object" && !Array.isArray(provenance) && provenance.caption === "supadata-unverified" ? "supadata-unverified" as const : "platform-or-page" as const;
+  return { platform: text(memory.metadata.platform, 40), creator: text(memory.metadata.author, 120), caption: text(memory.metadata.caption, 280), captionOrigin,
     sharedWithLink: text(memory.metadata.sharedText, 280), userNote: memory.rawText ? memory.rawText.trim().slice(0, 280) : null };
 }
 function metadataText(metadata: Record<string, JsonValue>) { return metadataValues(metadata).join(" "); }

@@ -19,6 +19,10 @@ export type MemoryView = {
 };
 
 const text = (value: JsonValue | undefined | null) => typeof value === "string" && value.trim() ? value.trim() : null;
+function fieldSource(memory: Memory, field: string) {
+  const provenance = memory.metadata.provenance;
+  return provenance && typeof provenance === "object" && !Array.isArray(provenance) && typeof provenance[field] === "string" ? provenance[field] : null;
+}
 const platformNames: Record<string, string> = { tiktok: "TikTok", youtube: "YouTube", instagram: "Instagram" };
 // Plain-language explanations for metadata a platform did not provide. The link itself is always saved.
 const detailReasons: Record<string, string> = {
@@ -96,7 +100,7 @@ export function presentMemory(memory: Memory, now = new Date()): MemoryView {
   const userNote = memory.sourceType === "text" ? null : text(memory.rawText);
   const video = memory.video ?? null; const analysed = !!(video?.status === "ready" && video.visual);
   let summary: MemoryView["summary"] = null;
-  if (caption) summary = { text: clamp(caption, 220), from: `From ${platformName}` };
+  if (caption) summary = { text: clamp(caption, 220), from: fieldSource(memory, "caption") === "supadata-unverified" ? "Retrieved description via Supadata (origin not verified)" : `From ${platformName}` };
   else if (sharedText) summary = { text: clamp(sharedText, 220), from: "Shared with the link" };
   else if (analysed && video?.visual?.observations[0]) summary = { text: clamp(video.visual.observations.slice(0, 2).join(". "), 220), from: "From REIBRY's look at your video" };
   else if (memory.sourceType === "text" && memory.rawText) {
@@ -114,9 +118,10 @@ export function presentMemory(memory: Memory, now = new Date()): MemoryView {
   // "What REIBRY knows", by source. Nothing here is inferred by the interface.
   const knows: KnowledgeGroup[] = [];
   if (memory.sourceType === "link") {
-    const fromPlatform = [!generic && !isUserTitle(memory) ? `Title: ${memory.title}` : null, creator ? `Creator: ${creator}` : null, caption ? `Caption: ${clamp(caption, 400)}` : null,
+    const unverified = fieldSource(memory, "caption") === "supadata-unverified" || fieldSource(memory, "author") === "supadata-unverified";
+    const fromPlatform = [!generic && !isUserTitle(memory) ? `${unverified ? "Retrieved label" : "Title"}: ${memory.title}` : null, creator ? `${unverified ? "Creator detail" : "Creator"}: ${creator}` : null, caption ? `${unverified ? "Retrieved description" : "Caption"}: ${clamp(caption, 400)}` : null,
       safeThumbnail(memory.metadata.thumbnailUrl) ? "A cover image" : null].filter((item): item is string => !!item);
-    if (fromPlatform.length) knows.push({ heading: `Shared by ${platformName}`, items: fromPlatform });
+    if (fromPlatform.length) knows.push({ heading: unverified ? "Retrieved via Supadata (origin not verified)" : `Shared by ${platformName}`, items: fromPlatform });
     if (sharedText) knows.push({ heading: "Shared with the link", items: [clamp(sharedText, 400)] });
   }
   if (isUserTitle(memory) || userNote || memory.sourceType === "text") knows.push({ heading: "From you", items: [isUserTitle(memory) || memory.sourceType === "text" ? `Title: ${memory.title}` : null,
