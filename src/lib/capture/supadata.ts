@@ -17,6 +17,13 @@ const approvedPilotIdentities = new Set([
 
 export type SupadataDependencies = { env: Record<string, string | undefined>; fetch: typeof fetch; timeoutMs?: number };
 export type SupadataMetadataFetcher = (link: ParsedCaptureUrl, ownerId: string) => Promise<MetadataResult | null>;
+/** Safe, field-free source-check categories for an owner-approved future diagnostic call. Never logged automatically. */
+export type SupadataSourceMatchDiagnostic = "platform" | "missing-url" | "missing-id" | "malformed-url" | "url-platform" | "url-identity" | "id";
+export type SupadataPilotSourceDiagnostic = {
+  approvedIdentity: string; returnedPlatform: string | "missing" | "other"; returnedIdFormat: "numeric" | "shortcode" | "missing" | "other";
+  returnedUrlHostPath: string | "missing" | "malformed" | "credentialed"; condition: SupadataSourceMatchDiagnostic | null;
+  descriptionPresent: boolean; thumbnailPresent: boolean;
+};
 const defaultDependencies: SupadataDependencies = { env: process.env, fetch };
 
 /** Default-off, exact-user private-development gate. It is never a general capture fallback. */
@@ -87,14 +94,61 @@ async function readJson(response: Response, signal: AbortSignal) {
   } finally { signal.removeEventListener("abort", cancel); reader.releaseLock(); }
 }
 
+type SourceMatch = { returned: ParsedCaptureUrl; diagnostic: null } | { returned: null; diagnostic: SupadataSourceMatchDiagnostic };
+function sourceMatch(link: ParsedCaptureUrl, data: Record<string, unknown>): SourceMatch {
+  if (data.platform !== link.platform) return { returned: null, diagnostic: "platform" };
+  if (typeof data.url !== "string") return { returned: null, diagnostic: "missing-url" };
+  if (typeof data.id !== "string") return { returned: null, diagnostic: "missing-id" };
+  let returned: ParsedCaptureUrl;
+  try { returned = parsePublicLink(data.url); } catch { return { returned: null, diagnostic: "malformed-url" }; }
+  if (returned.platform !== link.platform) return { returned: null, diagnostic: "url-platform" };
+  if (returned.identity !== link.identity) return { returned: null, diagnostic: "url-identity" };
+  if (link.postId && data.id !== link.postId) return { returned: null, diagnostic: "id" };
+  return { returned, diagnostic: null };
+}
+
+/**
+ * Returns a bounded category only. It deliberately omits provider URLs, IDs, text and account data,
+ * so it can be used by a future explicitly authorized server-only diagnostic without retaining a raw response.
+ */
+export function diagnoseSupadataSourceMatch(link: ParsedCaptureUrl, value: unknown): SupadataSourceMatchDiagnostic | "invalid-envelope" | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return "invalid-envelope";
+  return sourceMatch(link, value as Record<string, unknown>).diagnostic;
+}
+
+function diagnosticPlatform(value: unknown): SupadataPilotSourceDiagnostic["returnedPlatform"] {
+  return typeof value !== "string" ? "missing" : /^(youtube|tiktok|instagram|twitter|facebook)$/.test(value) ? value : "other";
+}
+function diagnosticIdFormat(value: unknown): SupadataPilotSourceDiagnostic["returnedIdFormat"] {
+  if (typeof value !== "string") return "missing";
+  if (/^\d{5,25}$/.test(value)) return "numeric";
+  return /^[A-Za-z0-9_-]{5,64}$/.test(value) ? "shortcode" : "other";
+}
+function diagnosticUrlHostPath(value: unknown): SupadataPilotSourceDiagnostic["returnedUrlHostPath"] {
+  if (typeof value !== "string") return "missing";
+  try { const url = new URL(value); if (url.username || url.password) return "credentialed"; return `${url.hostname.toLowerCase()}${url.pathname}`.slice(0, 256); }
+  catch { return "malformed"; }
+}
+
+/**
+ * Disabled unless the exact owner, allowlist and SUPADATA_DEV_DIAGNOSTICS=true all pass. This makes no network request and never logs.
+ * It intentionally returns only source-shape facts—never provider text, thumbnails, credentials, query strings or raw payloads.
+ */
+export function pilotSupadataSourceDiagnostic(ownerId: string, link: ParsedCaptureUrl, value: unknown, env: Record<string, string | undefined>): SupadataPilotSourceDiagnostic | null {
+  if (env.SUPADATA_DEV_DIAGNOSTICS !== "true" || !supadataPilotAllows(ownerId, link, env) || !value || typeof value !== "object" || Array.isArray(value)) return null;
+  const data = value as Record<string, unknown>; const media = data.media && typeof data.media === "object" && !Array.isArray(data.media) ? data.media as Record<string, unknown> : {};
+  return { approvedIdentity: link.identity, returnedPlatform: diagnosticPlatform(data.platform), returnedIdFormat: diagnosticIdFormat(data.id),
+    returnedUrlHostPath: diagnosticUrlHostPath(data.url), condition: sourceMatch(link, data).diagnostic,
+    descriptionPresent: typeof data.description === "string" && data.description.trim().length > 0, thumbnailPresent: typeof media.thumbnailUrl === "string" && media.thumbnailUrl.trim().length > 0 };
+}
+
 /** Parses only bounded, display-safe metadata. Returned fields remain expressly unverified external metadata. */
 export function parseSupadataMetadata(link: ParsedCaptureUrl, value: unknown): MetadataResult {
   if (!value || typeof value !== "object" || Array.isArray(value)) return failure("supadata-invalid-response");
   const data = value as Record<string, unknown>;
-  if (data.platform !== link.platform || typeof data.url !== "string" || typeof data.id !== "string") return failure("supadata-mismatched-source");
-  let returned: ParsedCaptureUrl;
-  try { returned = parsePublicLink(data.url); } catch { return failure("supadata-mismatched-source"); }
-  if (returned.platform !== link.platform || returned.identity !== link.identity || (link.postId && data.id !== link.postId)) return failure("supadata-mismatched-source");
+  const matched = sourceMatch(link, data);
+  if (!matched.returned) return failure("supadata-mismatched-source");
+  const returned = matched.returned;
   const description = cleanText(data.description, 1_000); const providerTitle = cleanText(data.title, 200);
   const authorRecord = data.author && typeof data.author === "object" && !Array.isArray(data.author) ? data.author as Record<string, unknown> : {};
   const username = cleanText(authorRecord.username, 80)?.replace(/^@/, ""); const displayName = cleanText(authorRecord.displayName, 100);

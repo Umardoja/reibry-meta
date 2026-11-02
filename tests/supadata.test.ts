@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { toModelEvidence } from "../src/lib/ai/meta/contracts.ts";
-import { createSupadataMetadataFetcher, parseSupadataMetadata, supadataGate, supadataPilotAllows } from "../src/lib/capture/supadata.ts";
+import { createSupadataMetadataFetcher, diagnoseSupadataSourceMatch, parseSupadataMetadata, pilotSupadataSourceDiagnostic, supadataGate, supadataPilotAllows } from "../src/lib/capture/supadata.ts";
 import { capture, enrichSavedLink, type LinkEnricher } from "../src/lib/capture/service.ts";
 import { parsePublicLink } from "../src/lib/capture/url-policy.ts";
 import { presentMemory } from "../src/lib/memory/presentation.ts";
@@ -58,6 +58,42 @@ test("TikTok and Instagram metadata becomes bounded unverified external detail, 
   assert.equal(tikTok.provenance.caption, "supadata-unverified"); assert.deepEqual(tikTok.hashtags, ["cakeidea", "birthday"]);
   const instagram = parseSupadataMetadata(parsePublicLink(instagramUrl), vendorRecord(instagramUrl, "instagram", "DOGnqc1DlIy", "Weekend market flowers"));
   assert.equal(instagram.caption, "Weekend market flowers"); assert.equal(instagram.thumbnailUrl, "https://cdn.example.net/cover.jpg");
+});
+
+test("documented equivalent mobile TikTok and Instagram post URLs retain strict post identity", () => {
+  const tiktok = parsePublicLink(tiktokUrl); const mobileTikTok = "https://m.tiktok.com/v/7696611605374602518.html?share=1";
+  const mobile = parsePublicLink(mobileTikTok); assert.equal(mobile.identity, tiktok.identity); assert.equal(parsePublicLink(mobile.normalized).identity, tiktok.identity);
+  assert.equal(parseSupadataMetadata(tiktok, vendorRecord(mobileTikTok, "tiktok", "7696611605374602518")).status, "complete");
+  const instagram = parsePublicLink(instagramUrl); const postUrl = "https://www.instagram.com/p/DOGnqc1DlIy/?igsh=ignored";
+  assert.equal(parsePublicLink(postUrl).identity, instagram.identity);
+  assert.equal(parseSupadataMetadata(instagram, vendorRecord(postUrl, "instagram", "DOGnqc1DlIy")).status, "complete");
+});
+
+test("source-match diagnostics classify only the failed identity check and retain all negative rejections", () => {
+  const link = parsePublicLink(tiktokUrl);
+  assert.equal(diagnoseSupadataSourceMatch(link, vendorRecord(tiktokUrl, "tiktok", "7696611605374602518")), null);
+  assert.equal(diagnoseSupadataSourceMatch(link, vendorRecord(tiktokUrl, "instagram", "7696611605374602518")), "platform");
+  assert.equal(diagnoseSupadataSourceMatch(link, { platform: "tiktok", id: "7696611605374602518" }), "missing-url");
+  assert.equal(diagnoseSupadataSourceMatch(link, { platform: "tiktok", url: tiktokUrl }), "missing-id");
+  assert.equal(diagnoseSupadataSourceMatch(link, vendorRecord("https://not a URL", "tiktok", "7696611605374602518")), "malformed-url");
+  assert.equal(diagnoseSupadataSourceMatch(link, vendorRecord("https://www.instagram.com/reel/DOGnqc1DlIy/", "tiktok", "7696611605374602518")), "url-platform");
+  assert.equal(diagnoseSupadataSourceMatch(link, vendorRecord("https://www.tiktok.com/@elsie.lizzy0/video/7696611605374602519", "tiktok", "7696611605374602519")), "url-identity");
+  assert.equal(diagnoseSupadataSourceMatch(link, vendorRecord("https://www.tiktok.com/@elsie.lizzy0/video/7696611605374602518", "tiktok", "7696611605374602519")), "id");
+  assert.equal(diagnoseSupadataSourceMatch(link, vendorRecord("https://vm.tiktok.com/ZMabc123/", "tiktok", "7696611605374602518")), "url-identity");
+  for (const value of [
+    vendorRecord("https://www.tiktok.com/@elsie.lizzy0/video/7696611605374602519", "tiktok", "7696611605374602519"),
+    vendorRecord("https://www.tiktok.com/@elsie.lizzy0/video/7696611605374602518", "tiktok", "7696611605374602519"),
+  ]) assert.equal(parseSupadataMetadata(link, value).reason, "supadata-mismatched-source");
+});
+
+test("server-only pilot diagnostics are default-off, require the exact gate, and omit provider text", () => {
+  const link = parsePublicLink(tiktokUrl); const record = vendorRecord("https://m.tiktok.com/v/7696611605374602518.html", "tiktok", "7696611605374602518", "never return this text");
+  assert.equal(pilotSupadataSourceDiagnostic(userA, link, record, env), null);
+  assert.equal(pilotSupadataSourceDiagnostic(userB, link, record, { ...env, SUPADATA_DEV_DIAGNOSTICS: "true" }), null);
+  const diagnostic = pilotSupadataSourceDiagnostic(userA, link, record, { ...env, SUPADATA_DEV_DIAGNOSTICS: "true" });
+  assert.deepEqual(diagnostic, { approvedIdentity: "tiktok:7696611605374602518", returnedPlatform: "tiktok", returnedIdFormat: "numeric",
+    returnedUrlHostPath: "m.tiktok.com/v/7696611605374602518.html", condition: null, descriptionPresent: true, thumbnailPresent: true });
+  assert.doesNotMatch(JSON.stringify(diagnostic), /never return this text/);
 });
 
 test("mismatched, malformed, null-field and unsafe-thumbnail vendor responses fail honestly", () => {

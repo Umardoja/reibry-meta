@@ -578,3 +578,12 @@
 - Live: one app details request per approved owned Memory, four total; no retry. All four persisted `supadata-mismatched-source` as unavailable. Neither TikTok nor Instagram gained usable description or thumbnail, so the pilot is PARTIAL and public release remains disabled.
 - Post-pilot: flag returned to false and the local server was restarted. User B received 404 for User A read/details; each identity remained one Memory; existing YouTube metadata stayed intact. No Meta, transcript, extract, deployment, push, or original-repository operation occurred.
 - Validation: lint PASS; typecheck PASS; 317/317 tests PASS; `git diff --check` PASS. Optimized-build compilation started with the flag disabled, but the environment did not return a terminal build status before the local server was restored; final build sign-off remains unverified.
+
+## Stage 12M-2 - Supadata source-identity debug
+
+- Date: 2026-11-02 (Africa/Lagos). Parent: `333c005367b6247ca22dee2c887db6bb0db164c8`. The Supadata private-pilot flag remained disabled; no provider, hosted database, Meta, Git remote, or LFS operation occurred.
+- Investigated the four persisted `supadata-mismatched-source` outcomes using the sanitized Stage 12K-3/M-1 records and the current provider metadata specification. The raw provider bodies were deliberately not retained, so the exact live mismatch field remains unknown.
+- Fixed a reproducible parser defect: Supadata's documented `m.tiktok.com/v/<numeric-id>.html` response URL now normalizes to the same exact TikTok post identity as the full canonical post. Cross-platform, wrong-post, short-link, malformed, missing, and contradictory-ID responses remain fail-closed.
+- Added a server-only, default-off source-shape diagnostic helper. It requires the same exact owner and four-identity gate plus a dedicated diagnostic flag, logs nothing, and never exposes provider text, raw response bodies, credentials, cookies, or query strings.
+- Documented the separate details-route timing risk: current sequential native-plus-optional budgets can exceed the route bound. No timeout semantics changed in this focused identity repair; a future fix must use one cancellable shared deadline without affecting save-first capture.
+- Validation: lint 0 errors (4 pre-existing warnings); typecheck PASS; 320/320 tests PASS; production build PASS (19 static pages and route manifest); `git diff --check` PASS. Push status: NOT PUSHED.

@@ -50,6 +50,10 @@ function tiktok(url: URL, submitted: string): ParsedCaptureUrl | null {
   const post = url.pathname.match(/^\/@([A-Za-z0-9._]{1,64})\/(video|photo)\/(\d{5,25})(?:\/|$)/);
   if (post) return { submitted, normalized: `https://www.tiktok.com/@${post[1]}/${post[2]}/${post[3]}`, platform: "tiktok", hostname: host,
     identity: `tiktok:${post[3]}`, postId: post[3], format: post[2] === "photo" ? "photo" : "video", shortLink: false, creatorHandle: `@${post[1]}` };
+  // Supadata documents this mobile canonical form. It conveys a numeric post ID but no reliable creator handle.
+  const mobilePost = host === "m.tiktok.com" ? url.pathname.match(/^\/v\/(\d{5,25})\.html(?:\/|$)/) : null;
+  if (mobilePost) return { submitted, normalized: `https://m.tiktok.com/v/${mobilePost[1]}.html`, platform: "tiktok", hostname: host,
+    identity: `tiktok:${mobilePost[1]}`, postId: mobilePost[1], format: "video", shortLink: false, creatorHandle: null };
   // Share links (vm./vt.tiktok.com/<code>, tiktok.com/t/<code>) only reveal the post after a redirect, resolved during enrichment.
   const code = host === "vm.tiktok.com" || host === "vt.tiktok.com" ? parts[0] : parts[0] === "t" ? parts[1] : null;
   if (code && segment.test(code)) {
