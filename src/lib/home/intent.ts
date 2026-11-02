@@ -1,4 +1,5 @@
 import { resolveLifeDate } from "../life/dates.ts";
+import { isPlanningPrompt } from "../plans/guidance.ts";
 import type { HomeIntent } from "./contracts.ts";
 
 // Deterministic routes are reserved for trusted reads and the confirm-first Life write. Everything else is conversation with Muse.
@@ -18,6 +19,7 @@ export function classifyHomeIntent(message: string, timezone = "UTC", now = new 
   if (actionReview.test(value)) return "ACTION_REVIEW";
   if (undatedLife.test(value)) return "LIFE_UNDATED";
   if (upcomingLife.test(value)) return "LIFE_UPCOMING";
+  if (isPlanningPrompt(value)) return "PLANNING_DRAFT";
   if (explicitLifeAdd.test(value) && !notLife.test(value)) return "LIFE_DRAFT";
   if (statedLifePlan.test(value) && resolveLifeDate(value, now, timezone)) return "LIFE_DRAFT";
   if (externalAction.test(value)) return "UNSUPPORTED";

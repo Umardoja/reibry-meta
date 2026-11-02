@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { ActionProposalReview } from "@/components/actions/action-proposal-review";
+import { HomePlanningDraft } from "@/components/plans/home-planning-draft";
+import { HomeUpcomingPlan } from "@/components/home/home-upcoming-plan";
 import { RequireAuth } from "@/components/auth/require-auth";
 import { PageContainer, StatePanel } from "@/components/ui/primitives";
 import type { ActionProposalView } from "@/lib/actions/contracts";
@@ -74,7 +76,7 @@ export function HomeConversation() {
   function newChat() { controller.current?.abort(); inFlight.current = false; lastRequest.current = null; setTurns([]); setText(""); setError(""); setLoading(false); }
   return <RequireAuth nextPath="/"><PageContainer className={`home-page${turns.length ? " home-page-conversation" : ""}`}>
     <div className="home-intro"><div className="home-intro-row"><p className="section-label">From saved to done</p>{turns.length > 0 && <button type="button" className="home-new-chat" onClick={newChat}>New chat</button>}</div>
-      <h1 className="page-h1">What are you trying to do?</h1><p className="page-sub">Ask about something you&apos;ve saved, or tell REIBRY what&apos;s coming up.</p></div>
+      <h1 className="page-h1">What are you trying to do?</h1><p className="page-sub">Ask about something you&apos;ve saved, or tell REIBRY what&apos;s coming up.</p><HomeUpcomingPlan/></div>
     <section className="home-thread" aria-label="Conversation with REIBRY">
       {!turns.length && <div className="home-welcome"><span className="home-assistant-label">REIBRY</span><p>Tell me what you&apos;re planning, or ask about something you&apos;ve saved.</p><div className="home-suggestions">
         <button type="button" onClick={() => choose("Find my saved travel notes")}>Find a Memory</button><button type="button" onClick={() => choose("Add my meeting tomorrow at 10am")}>Plan something</button><button type="button" onClick={() => choose("What's coming up?")}>What&apos;s coming up?</button></div></div>}
@@ -82,6 +84,7 @@ export function HomeConversation() {
         <EvidenceList response={turn.response}/><LifeList response={turn.response}/>
         {turn.response.lifeDraft && <div className="home-draft-card"><p><strong>{turn.response.lifeDraft.title}</strong></p><p>{new Intl.DateTimeFormat(undefined, { dateStyle: "full", timeStyle: "short" }).format(new Date(turn.response.lifeDraft.startDate!))} · {turn.response.lifeDraft.type}</p><p className="field-hint">This is a draft. It has not been saved and no reminder is scheduled.</p><div className="home-message-actions">
           <button className="home-action-chip" type="button" disabled={loading} onClick={() => void request({ message: turn.response!.lifeDraft!.sourceText, mode: "confirm-life", history: [], references: [] })}>Save to Life</button><Link className="home-action-chip" href="/life">Review Life</Link></div></div>}
+        {turn.response.planningDraft && <HomePlanningDraft draft={turn.response.planningDraft}/>}
         {turn.response.savedLife && <Link className="home-action-chip" href={turn.response.savedLife.href}>View saved Life context</Link>}
         {turn.response.actionProposals.length > 0 && <ActionProposalReview proposals={turn.response.actionProposals} onChanged={proposal => updateProposal(turn.id, proposal)} />}
       </div>}</div>)}

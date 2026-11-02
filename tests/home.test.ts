@@ -10,6 +10,8 @@ import { LifeRepositoryFailure } from "../src/lib/life/repository.ts";
 import type { Memory } from "../src/lib/memory/contracts.ts";
 import { handleHomeRequest, type HomeContext } from "../src/lib/home/handler.ts";
 import { classifyHomeIntent, isSmallTalk } from "../src/lib/home/intent.ts";
+import { buildPlanningDraft } from "../src/lib/plans/guidance.ts";
+import type { RetrievalItem } from "../src/lib/retrieval/contracts.ts";
 import { createActionTestState, createInMemoryActionRepository } from "./support/in-memory-action-repository.ts";
 import { createInMemoryLifeRepository, createLifeTestState } from "./support/in-memory-life-repository.ts";
 import { createInMemoryMemoryRepository, createMemoryTestState } from "./support/in-memory-memory-repository.ts";
@@ -41,11 +43,30 @@ test("routing keeps trusted reads and Life drafts deterministic and sends ordina
   for (const [message, intent] of [["What's coming up?", "LIFE_UPCOMING"], ["What Life contexts need dates?", "LIFE_UNDATED"], ["Show my birthday plans", "LIFE_UPCOMING"],
     ["Explain the proposed action", "ACTION_REVIEW"], ["Review my Action proposals", "ACTION_REVIEW"], ["Add my meeting tomorrow at 10am", "LIFE_DRAFT"],
     ["Add mum's birthday party", "LIFE_DRAFT"], ["I have an exam tomorrow at 9am", "LIFE_DRAFT"], ["Send an email for me", "UNSUPPORTED"], ["Book the bakery order for me", "UNSUPPORTED"],
+    ["I have a biology exam in 7 days. Help me prepare.", "PLANNING_DRAFT"], ["My mum's birthday is next Saturday. Help me plan something memorable.", "PLANNING_DRAFT"],
+    ["Help me plan my API project deadline next Friday.", "PLANNING_DRAFT"],
     // Stage 12H regressions: these everyday messages were previously refused, mis-drafted as Life, or answered with a fixed menu.
     ["Hey", "CONVERSATION"], ["What can you do?", "CONVERSATION"], ["Find my book notes", "CONVERSATION"], ["I need to find my cake recipe", "CONVERSATION"],
     ["I want to learn Python", "CONVERSATION"], ["Can we turn that into a plan?", "CONVERSATION"], ["What about the second one?", "CONVERSATION"],
     ["Save this note about the hotel", "CONVERSATION"], ["Maybe something", "CONVERSATION"]] as const) assert.equal(classifyHomeIntent(message, "UTC", now), intent, message);
   assert.equal(isSmallTalk("Hey"), true); assert.equal(isSmallTalk("Thanks, this is helpful!"), true); assert.equal(isSmallTalk("What can you do?"), true); assert.equal(isSmallTalk("Hey, what did I save about Lagos?"), false);
+});
+const planningItem = (overrides: Partial<RetrievalItem> = {}): RetrievalItem => ({ memoryId, memoryHref: `/memories#memory-${memoryId}`, displayTitle: "Biology revision notes", sourceType: "text", storedExcerpt: "Biology exam revision on cells and genetics.", matchedSourceMetadata: [], sourceUrl: null, processingStatus: "complete", match: { reason: "The saved note matches this query.", score: 80, fields: ["note"] }, ...overrides });
+test("planning drafts are dated, grounded and honest about missing essentials", () => {
+  const exam = buildPlanningDraft({ message: "I have a biology exam in 7 days. Help me prepare.", timezone: "UTC", now, candidates: [planningItem()] });
+  assert.equal(exam.question, null); assert.equal(exam.draft?.kind, "exam"); assert.equal(exam.draft?.title, "Biology exam"); assert.equal(exam.draft?.candidateMemories[0].memoryId, memoryId); assert.match(exam.draft?.description || "", /Suggested 7 days/);
+  const birthday = buildPlanningDraft({ message: "My mum's birthday is next Saturday. Help me plan something memorable.", timezone: "UTC", now, candidates: [planningItem({ displayTitle: "Butterfly birthday cake", match: { reason: "Stored source metadata matches this query.", score: 70, fields: ["metadata"] } })] });
+  assert.equal(birthday.draft?.kind, "celebration"); assert.equal(birthday.draft?.title, "Mum's birthday"); assert.equal(birthday.draft?.candidateMemories[0].displayTitle, "Butterfly birthday cake");
+  const project = buildPlanningDraft({ message: "Help me plan my API project deadline next Friday.", timezone: "UTC", now, candidates: [] });
+  assert.equal(project.draft?.kind, "project"); assert.equal(project.draft?.candidateMemories.length, 0);
+  assert.match(buildPlanningDraft({ message: "I have an exam. Help me prepare.", timezone: "UTC", now, candidates: [] }).question || "", /due/i);
+  assert.match(buildPlanningDraft({ message: "I have an exam next Friday. Help me prepare.", timezone: "UTC", now, candidates: [] }).question || "", /subject/i);
+});
+test("Home planning drafts search only owner evidence and do not invoke Muse or create a Plan", async () => {
+  const biology = memory({ title: "Biology revision video", rawText: "Cells and genetics practice for the biology exam." });
+  const value = context([biology]); const result = await run("I have a biology exam in 7 days. Help me prepare.", value, noProvider);
+  assert.equal(result.status, 200); assert.equal(result.data?.intent, "PLANNING_DRAFT"); assert.equal(result.data?.planningDraft?.candidateMemories[0].memoryId, biology.id);
+  assert.equal(value.actionState.proposals.size, 0); assert.equal(value.actionState.cards.size, 0);
 });
 test("greetings reach Muse without Memory retrieval", async () => { const seen: ConversationInput[] = []; const result = await run("Hey", context(), reasoner(seen));
   assert.equal(result.status, 200); assert.equal(result.data?.intent, "CONVERSATION"); assert.equal(result.data?.message, "Hi! What would you like to find or plan?");

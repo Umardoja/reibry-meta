@@ -10,7 +10,9 @@ import { LifeRepositoryFailure, type LifeRepository } from "../life/repository.t
 import { createLifeFromText, deterministicLifeContext } from "../life/service.ts";
 import { MemoryRepositoryFailure, type MemoryRepository } from "../memory/repository.ts";
 import { SEARCH_CANDIDATE_MAX, type RetrievalItem } from "../retrieval/contracts.ts";
+import { searchOwnedMemories } from "../retrieval/service.ts";
 import type { Memory } from "../memory/contracts.ts";
+import { buildPlanningDraft } from "../plans/guidance.ts";
 import { resolveConversationEvidence } from "./references.ts";
 import { emptyHomeResponse, homeLifeItem, HomeContractError, HOME_RESULT_MAX, parseHomeBody, type HomeIntent, type HomeRequest, type HomeResponse } from "./contracts.ts";
 import { classifyHomeIntent, isPlanningRequest, isSmallTalk } from "./intent.ts";
@@ -147,11 +149,26 @@ export async function handleHomeRequest(request: Request, factory: HomeContextFa
   const trace = new HomeTrace();
   try { const result = await bounded(async signal => {
     const input = parseHomeBody(await readJson(request, signal)); const intent = classifyHomeIntent(input.message, input.timezone, now());
-    trace.enter("auth"); const context = await factory(signal); assertOwner(context); trace.enter(intent === "LIFE_UPCOMING" || intent === "LIFE_UNDATED" || intent === "LIFE_DRAFT" ? "life" : intent === "ACTION_REVIEW" ? "actions" : "conversation");
+    trace.enter("auth"); const context = await factory(signal); assertOwner(context); trace.enter(intent === "LIFE_UPCOMING" || intent === "LIFE_UNDATED" || intent === "LIFE_DRAFT" ? "life" : intent === "ACTION_REVIEW" ? "actions" : intent === "PLANNING_DRAFT" ? "planning" : "conversation");
     if (input.mode === "confirm-life" && intent !== "LIFE_DRAFT") throw new HomeContractError("Only a Life draft can be confirmed.");
     if (intent === "LIFE_UPCOMING") { const items = filterLife(await context.lifeRepository.listUpcoming(now().toISOString(), 50), input.message); const data = emptyHomeResponse(intent, items.length === 1 ? "Here's what's coming up next." : items.length ? `Here are the next ${items.length} things coming up.` : "Nothing is coming up in Life right now. Tell me about a plan and I'll draft it for you."); data.lifeContexts = items.map(homeLifeItem); return { status: 200, data, error: null }; }
     if (intent === "LIFE_UNDATED") { const items = filterLife(await context.lifeRepository.listUndated(50), input.message); const data = emptyHomeResponse(intent, items.length ? "These still need a date:" : "Everything in Life has a date, so there's nothing to fix."); data.lifeContexts = items.map(homeLifeItem); return { status: 200, data, error: null }; }
     if (intent === "ACTION_REVIEW") { const proposals = (await context.actionRepository.listProposals()).slice(0, HOME_RESULT_MAX).map(proposalView); const data = emptyHomeResponse(intent, proposals.length ? "Here's what's waiting for your review. Nothing is saved until you confirm it." : "There's nothing waiting for your review right now."); data.actionProposals = proposals; return { status: 200, data, error: null }; }
+    if (intent === "PLANNING_DRAFT") {
+      // First parse without evidence. A missing date or exam subject gets one concise question and no provider call.
+      const parsed = buildPlanningDraft({ message: input.message, timezone: input.timezone, now: now(), candidates: [] });
+      if (!parsed.draft) return { status: 200, data: emptyHomeResponse("CLARIFICATION", parsed.question || "Tell me what you are preparing for and when it is due."), error: null };
+      trace.enter("retrieval");
+      const evidence = await searchOwnedMemories(context.memoryRepository, parsed.query || parsed.draft.title, HOME_RESULT_MAX);
+      const planned = buildPlanningDraft({ message: input.message, timezone: input.timezone, now: now(), candidates: evidence.items });
+      if (!planned.draft) throw new HomeContractError("Unable to prepare a planning draft.");
+      const data = emptyHomeResponse("PLANNING_DRAFT", evidence.items.length
+        ? "I found saved Memories that may help. Choose only the ones you want in this Plan; the schedule is suggested advice, not a claim about those sources."
+        : "I couldn't find a clearly relevant saved Memory. Here's a general preparation outline; you can still create a Plan without pretending you have source-backed resources.");
+      data.planningDraft = planned.draft;
+      data.memories = evidence.items;
+      return { status: 200, data, error: null };
+    }
     if (intent !== "LIFE_DRAFT") return converse(input, intent, context, reasoner, limiter, signal, now, trace);
     const draft = deterministicLifeContext({ text: input.message, timezone: input.timezone, referenceNow: now() });
     if (!draft.startDate) return { status: 200, data: emptyHomeResponse("CLARIFICATION", "When is it happening? Give me a day and time, like “Saturday at 4pm”, and I'll draft it for you to confirm. I won't guess the date."), error: null };

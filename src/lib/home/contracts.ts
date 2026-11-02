@@ -2,6 +2,7 @@ import type { ActionProposalView } from "../actions/contracts.ts";
 import type { AskResponse } from "../ai/meta/contracts.ts";
 import type { LifeContext, NewLifeContext } from "../life/contracts.ts";
 import type { RetrievalItem } from "../retrieval/contracts.ts";
+import type { PlanningDraft } from "../plans/guidance.ts";
 
 export const HOME_MESSAGE_MAX = 500;
 export const HOME_TIMEZONE_MAX = 100;
@@ -13,7 +14,7 @@ export const HOME_HISTORY_CHARS_MAX = 4_000;
 export const HOME_REFERENCES_MAX = 6;
 
 export type HomeIntent = "MEMORY_SEARCH" | "GROUNDED_ANSWER" | "LIFE_UPCOMING" | "LIFE_UNDATED" |
-  "LIFE_DRAFT" | "ACTION_REVIEW" | "CLARIFICATION" | "UNSUPPORTED" | "CONVERSATION";
+  "LIFE_DRAFT" | "PLANNING_DRAFT" | "ACTION_REVIEW" | "CLARIFICATION" | "UNSUPPORTED" | "CONVERSATION";
 
 export type HomeHistoryTurn = { role: "user" | "assistant"; text: string };
 export type HomeRequest = { message: string; timezone: string; mode: "message" | "confirm-life"; history: HomeHistoryTurn[]; references: string[] };
@@ -28,6 +29,8 @@ export type HomeResponse = {
   groundedAnswer: AskResponse | null;
   lifeContexts: HomeLifeItem[];
   lifeDraft: HomeLifeDraft | null;
+  /** Deterministic, unsaved planning advice. The browser must explicitly choose Memories and create the Plan. */
+  planningDraft: PlanningDraft | null;
   savedLife: HomeLifeItem | null;
   actionProposals: ActionProposalView[];
   /** Sanitized provider failure category when Home fell back instead of a Muse reply (never provider bodies or secrets). */
@@ -87,5 +90,5 @@ function parseReferences(value: unknown): string[] {
 }
 
 export function emptyHomeResponse(intent: HomeIntent, message: string): HomeResponse {
-  return { intent, message, memories: [], groundedAnswer: null, lifeContexts: [], lifeDraft: null, savedLife: null, actionProposals: [], fallbackReason: null };
+  return { intent, message, memories: [], groundedAnswer: null, lifeContexts: [], lifeDraft: null, planningDraft: null, savedLife: null, actionProposals: [], fallbackReason: null };
 }
