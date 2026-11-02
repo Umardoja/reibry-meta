@@ -69,6 +69,19 @@ test("documented equivalent mobile TikTok and Instagram post URLs retain strict 
   assert.equal(parseSupadataMetadata(instagram, vendorRecord(postUrl, "instagram", "DOGnqc1DlIy")).status, "complete");
 });
 
+test("Instagram requires one exact shortcode confirmed by both the provider ID and a public post URL", () => {
+  const instagram = parsePublicLink(instagramUrl);
+  const equivalentTvUrl = "https://www.instagram.com/tv/DOGnqc1DlIy/?utm_source=ignored";
+  assert.equal(parseSupadataMetadata(instagram, vendorRecord(equivalentTvUrl, "instagram", "DOGnqc1DlIy")).status, "complete");
+
+  const wrongShortcode = "DifferentPost9";
+  assert.equal(diagnoseSupadataSourceMatch(instagram, vendorRecord(instagramUrl, "instagram", wrongShortcode)), "id");
+  assert.equal(diagnoseSupadataSourceMatch(instagram, vendorRecord(`https://www.instagram.com/reel/${wrongShortcode}/`, "instagram", "DOGnqc1DlIy")), "url-identity");
+  assert.equal(diagnoseSupadataSourceMatch(instagram, { platform: "instagram", id: "DOGnqc1DlIy" }), "missing-url");
+  assert.equal(diagnoseSupadataSourceMatch(instagram, vendorRecord(instagramUrl, "tiktok", "DOGnqc1DlIy")), "platform");
+  assert.equal(parseSupadataMetadata(instagram, vendorRecord(`https://www.instagram.com/reel/${wrongShortcode}/`, "instagram", "DOGnqc1DlIy")).reason, "supadata-mismatched-source");
+});
+
 test("a TikTok response with the exact numeric post ID may omit only its URL", () => {
   const link = parsePublicLink(tiktokUrl); const withoutUrl = { ...vendorRecord(tiktokUrl, "tiktok", "7696611605374602518"), url: undefined };
   const accepted = parseSupadataMetadata(link, withoutUrl);
