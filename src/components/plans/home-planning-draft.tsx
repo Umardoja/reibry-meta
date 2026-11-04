@@ -15,7 +15,7 @@ const localDateTime = (iso: string) => {
  * client over the existing owner-bound Plan endpoint; it never writes until the
  * user selects resources and confirms creation.
  */
-export function HomePlanningDraft({ draft }: { draft: PlanningDraft }) {
+export function HomePlanningDraft({ draft, modelName = null }: { draft: PlanningDraft; modelName?: string | null }) {
   const [title, setTitle] = useState(draft.title);
   const [description, setDescription] = useState(draft.description);
   const [startDate, setStartDate] = useState(localDateTime(draft.startDate));
@@ -54,7 +54,7 @@ export function HomePlanningDraft({ draft }: { draft: PlanningDraft }) {
 
   return <section className="home-planning-card" aria-label="Planning draft">
     <p className="section-label">Planning draft · not saved</p><h2 className="section-heading">Build this from your Memories</h2>
-    <p className="field-hint">{draft.daysRemaining === 1 ? "1 day remains." : `${draft.daysRemaining} days remain.`} The outline is REIBRY&apos;s suggested planning advice. Only checked Memories are added to the Plan.</p>
+    <p className="field-hint">{draft.daysRemaining === 1 ? "1 day remains." : `${draft.daysRemaining} days remain.`} {modelName ? "Muse helped shape this outline from the saved Memories below." : "This is a reviewable planning outline."} Only checked Memories are added to the Plan.</p>
     <ol className="home-planning-steps">{draft.schedule.map(step => <li key={step.title}><strong>{step.title}</strong><span>{step.description}</span></li>)}</ol>
     <form className="plan-form home-planning-form" onSubmit={create} aria-busy={busy}>
       <label htmlFor="home-plan-title">Plan title</label><input id="home-plan-title" className="input" value={title} maxLength={300} required onChange={event => setTitle(event.target.value)} />
@@ -63,7 +63,7 @@ export function HomePlanningDraft({ draft }: { draft: PlanningDraft }) {
       <fieldset className="ready-pack-choice-section"><legend>Relevant saved Memories</legend>
         {!candidates.length && <p>No saved Memory clearly matches this request. You can keep this general framework, but no source-backed resource will be added.</p>}
         {candidates.map(candidate => <div className="home-planning-choice" key={candidate.memoryId}><label><input type="checkbox" checked={selected.includes(candidate.memoryId)} onChange={() => toggle(candidate.memoryId)} />
-          <span><strong>{candidate.displayTitle}</strong><small>{candidate.match.reason}{candidate.sourceDetails?.captionOrigin === "supadata-unverified" ? " Retrieved description via Supadata; origin not verified." : ""}</small>
+          <span><strong>{candidate.displayTitle}</strong><small>{candidate.match.reason}</small>
             {candidate.storedExcerpt && <small>{candidate.storedExcerpt}</small>}</span></label><Link className="home-action-chip" href={`/memories/${candidate.memoryId}`}>View</Link></div>)}
       </fieldset>
       <p className="field-hint">You can edit the Plan later. After it saves, the existing Ready Pack screen asks for a separate confirmation before saving a guide.</p>

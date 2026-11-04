@@ -21,7 +21,7 @@ function TodayCard({ item, hero }: { item: TodayResurfacedMemory; hero: boolean 
     <span className="why-now-pill">Why now</span><Link className="life-pill" href={item.lifeContext.href}>{item.lifeContext.title}</Link>
     <h2 className={hero ? "hero-title" : "compact-title"}><Link href={item.memoryHref}>{item.displayTitle}</Link></h2>
     {item.storedExcerpt ? <p className={hero ? "hero-desc" : "compact-desc"}>{item.storedExcerpt}</p> :
-      <p className={hero ? "hero-desc" : "compact-desc"}>A saved link — REIBRY hasn&apos;t watched or read it.</p>}
+      <p className={hero ? "hero-desc" : "compact-desc"}>A saved source link.</p>}
     <div className="why-box"><h3 className="why-box-title">Why this came back</h3><p className="why-box-text">{item.reason}</p></div>
   </div></article>;
 }

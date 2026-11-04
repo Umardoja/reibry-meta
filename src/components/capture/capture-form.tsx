@@ -1,7 +1,8 @@
 "use client";
 // Stage 12J-3 Capture: one obvious action. Paste or share a link (or write a note), tap Save, get back to life.
-// Request 1 saves immediately; request 2 fetches whatever details the platform shares. Nothing is ever saved without the user's tap.
-import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+// Request 1 saves immediately; request 2 fetches whatever details the platform shares. A signed-in
+// Shortcut handoff is the intentional save action; ordinary typed and pasted Capture stays manual.
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { RequireAuth } from "@/components/auth/require-auth";
 import { IC } from "@/components/design/icons";
@@ -13,6 +14,7 @@ import { cleanSharedText, parseSharedPayload, readShareArrival, type ShareArriva
 type Enrichment = { status: "complete" | "partial" | "unavailable" | "unsupported" | "timed-out" | "pending"; provider: string | null; reason?: string };
 type CaptureReply = { memory: Memory; duplicate: boolean; enrichment: Enrichment };
 type DetailsReply = { memory: Memory; enrichment: Enrichment; merged?: boolean };
+type DetectedCapture = { kind: "link"; url: string; note: string; platform: MemoryKind } | { kind: "note"; linkPresent: boolean };
 export type { SharedPayload };
 const PENDING_KEY = "reibry-pending-share";
 
@@ -48,24 +50,42 @@ export function CaptureForm({ shared }: { shared?: SharedPayload | null }) {
   const [result, setResult] = useState<CaptureReply | null>(null);
   const [details, setDetails] = useState<{ busy: boolean; message: string }>({ busy: false, message: "" });
   const [canPaste] = useState(() => typeof navigator !== "undefined" && !!navigator.clipboard?.readText);
-  const inFlight = useRef(false); const detailsInFlight = useRef(false); const fieldRef = useRef<HTMLTextAreaElement>(null);
+  // The established iPhone Shortcut opens /capture#url=... . A URL fragment is never sent to the
+  // server; after a signed-in browser has accepted it, the same owner-scoped capture POST used by
+  // manual Capture persists it. Clearing the fragment below makes refresh/back navigation inert.
+  // Start empty on both server and client. The effect below promotes an initial fragment only
+  // after hydration; relying on a browser-only initializer made first-load Shortcut handoffs
+  // look manual when the fragment was cleared before auto-save state existed.
+  const [shortcutAutoSave, setShortcutAutoSave] = useState<string | null>(null);
+  const inFlight = useRef(false); const detailsInFlight = useRef(false); const autoSaveHandled = useRef<string | null>(null);
+  const fieldRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
-    // Once the shared link is in the form, remove it from the address bar and history (keeping Next's own history state).
-    if (window.location.search || window.location.hash) window.history.replaceState(window.history.state, "", "/capture");
-    // Safari can reuse an open REIBRY tab for a new share: then only the #fragment changes and the page does not reload.
-    function onHash() {
-      const next = readShareArrival("", window.location.hash); if (!next.arrived) return;
+    function acceptShortcutArrival(next: ShareArrival, token: string | null) {
       setArrival(next); setResult(null); setError(""); setForceNote(false); setHandoff(!!next.payload);
       if (next.payload) { setInitial(next.payload); setContent(prefill(next.payload)); setTitle(next.payload.title); setSharedText(sharedWords(next.payload)); }
-      window.history.replaceState(window.history.state, "", "/capture");
+      if (token && next.payload) setShortcutAutoSave(token);
+      // Once the shared link is in the form, remove it from the address bar and history (keeping Next's own history state).
+      if (window.location.search || window.location.hash) window.history.replaceState(window.history.state, "", "/capture");
+    }
+    // Client components also render on the server. Read the initial fragment after hydration,
+    // before clearing it, so the original /capture#url= Shortcut handoff is auto-saved too.
+    const initialHash = window.location.hash; const initialArrival = readShareArrival(window.location.search, initialHash);
+    const initialTimer = initialArrival.arrived && initialArrival.payload && initialHash
+      ? window.setTimeout(() => acceptShortcutArrival(initialArrival, initialHash), 0)
+      : undefined;
+    if (!initialTimer && (window.location.search || window.location.hash)) window.history.replaceState(window.history.state, "", "/capture");
+    // Safari can reuse an open REIBRY tab for a new share: then only the #fragment changes and the page does not reload.
+    function onHash() {
+      const hash = window.location.hash; const next = readShareArrival("", hash); if (!next.arrived) return;
+      acceptShortcutArrival(next, hash);
     }
     window.addEventListener("hashchange", onHash);
-    return () => window.removeEventListener("hashchange", onHash);
+    return () => { if (initialTimer) window.clearTimeout(initialTimer); window.removeEventListener("hashchange", onHash); };
   }, []);
 
   // A link (optionally with words around it, as share sheets send) is saved as a link; anything else as a note.
-  const detected = useMemo(() => {
+  const detected = useMemo<DetectedCapture | null>(() => {
     const trimmed = content.trim(); if (!trimmed) return null;
     const found = parseSharedPayload(name => name === "text" ? trimmed : null);
     if (!forceNote && found && trimmed.length - found.url.length <= 600) return { kind: "link" as const, url: found.url, note: found.note, platform: platformOf(found.url) };
@@ -80,12 +100,11 @@ export function CaptureForm({ shared }: { shared?: SharedPayload | null }) {
     catch { setError("REIBRY couldn't read the clipboard. Long-press the box and choose Paste instead."); }
   }
 
-  async function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); if (!detected) return; if (inFlight.current) return; inFlight.current = true; setBusy(true); setError(""); setResult(null); setNoteAdded(false); setDetails({ busy: false, message: "" });
-    const note = String(new FormData(event.currentTarget).get("note") ?? "").trim();
-    const body = detected.kind === "link"
-      ? { sourceType: "link", content: detected.url, ...(title.trim() ? { title: title.trim() } : {}), ...([detected.note, note].filter(Boolean).length ? { note: [detected.note, note].filter(Boolean).join("\n") } : {}),
-        ...(sharedWithLink ? { sharedText: sharedWithLink } : {}) }
+  const saveCapture = useCallback(async (candidate: DetectedCapture, note: string, incomingSharedText: string) => {
+    if (inFlight.current) return; inFlight.current = true; setBusy(true); setError(""); setResult(null); setNoteAdded(false); setDetails({ busy: false, message: "" });
+    const body = candidate.kind === "link"
+      ? { sourceType: "link", content: candidate.url, ...(title.trim() ? { title: title.trim() } : {}), ...([candidate.note, note].filter(Boolean).length ? { note: [candidate.note, note].filter(Boolean).join("\n") } : {}),
+        ...(incomingSharedText ? { sharedText: incomingSharedText } : {}) }
       : { sourceType: "text", content: content.trim(), ...(title.trim() ? { title: title.trim() } : {}) };
     const controller = new AbortController(); const timer = setTimeout(() => controller.abort(), 12_000);
     try {
@@ -98,6 +117,24 @@ export function CaptureForm({ shared }: { shared?: SharedPayload | null }) {
       if (saved.memory.sourceType === "link" && saved.memory.metadata.enrichment !== "complete") void getDetails(saved);
     } catch (cause) { setError(cause instanceof Error && cause.name !== "AbortError" ? cause.message : "Saving took too long. Check Memories before trying again — it may already be saved."); }
     finally { clearTimeout(timer); inFlight.current = false; setBusy(false); }
+  }, [content, title]);
+
+  useEffect(() => {
+    // Call the trusted save routine directly rather than dispatching a synthetic form submission.
+    // This avoids Safari requestSubmit edge cases while keeping typed/pasted Capture manual.
+    if (!shortcutAutoSave || autoSaveHandled.current === shortcutAutoSave || detected?.kind !== "link") return;
+    if (!["tiktok", "instagram", "youtube"].includes(detected.platform)) return;
+    autoSaveHandled.current = shortcutAutoSave;
+    // Defer out of the effect itself. This avoids a synchronous effect-state cascade while still
+    // running exactly once after the signed-in Shortcut handoff has rendered.
+    const timer = window.setTimeout(() => { void saveCapture(detected, "", sharedWithLink); }, 0);
+    return () => window.clearTimeout(timer);
+  }, [shortcutAutoSave, detected, saveCapture, sharedWithLink]);
+
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); if (!detected) return;
+    const note = String(new FormData(event.currentTarget).get("note") ?? "").trim();
+    void saveCapture(detected, note, sharedWithLink);
   }
   async function getDetails(current: CaptureReply) {
     if (detailsInFlight.current) return; detailsInFlight.current = true; setDetails({ busy: true, message: "" });
@@ -148,7 +185,7 @@ export function CaptureForm({ shared }: { shared?: SharedPayload | null }) {
       </details>
       <div className="capture-submit">
         {canPaste && <button type="button" className="button btn-ghost" onClick={() => void paste()} aria-label="Paste from clipboard">{IC.paste}<span>Paste</span></button>}
-        <button className="button btn-primary" type="submit" disabled={busy || !detected}>{busy ? "Saving…" : "Save to REIBRY"}</button>
+        <button className="button btn-primary" type="submit" disabled={busy || !detected}>{busy ? "Saving…" : error && shortcutAutoSave ? "Retry saving" : "Save to REIBRY"}</button>
       </div>
     </form>}
     {error && <p className="auth-error" role="alert">{error}</p>}
@@ -162,7 +199,7 @@ export function CaptureForm({ shared }: { shared?: SharedPayload | null }) {
       {details.message && <p className="field-hint" role="status">{details.message}</p>}
       {askWhy && <WhatCaughtYourEye key={result.memory.id} memoryId={result.memory.id} onSaved={memory => { setNoteAdded(true); setResult(current => current && { ...current, memory }); }} />}
       <div className="inline-actions">
-        {view.details.state !== "none" && view.details.state !== "ready" && <button type="button" className="button btn-ghost" disabled={details.busy} onClick={() => void getDetails(result)}>{details.busy ? "Getting details…" : "Retry getting details"}</button>}
+        {view.details.state !== "none" && view.details.state !== "ready" && <button type="button" className="button btn-ghost" disabled={details.busy} onClick={() => void getDetails(result)}>{details.busy ? "Getting details…" : "Try again"}</button>}
         <Link href={view.href} className="button btn-ghost">View Memory</Link>
         <button type="button" className="button btn-primary" onClick={another}>Save another</button>
       </div>

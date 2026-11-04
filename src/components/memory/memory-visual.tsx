@@ -1,7 +1,7 @@
 "use client";
 // Stage 12J-3 "Personal Memory Atlas": the visual pieces every Memory surface shares.
 import Link from "next/link";
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { MemoryKind, MemoryView } from "@/lib/memory/presentation";
 
 // Simple generic glyphs (not platform logos) so a tile is clearly a placeholder, never a fake frame of the saved video.
@@ -31,7 +31,10 @@ export function MemoryCover({ view, excerpt, size = "card" }: { view: MemoryView
 }
 
 export function MemoryCard({ view, excerpt }: { view: MemoryView; excerpt?: string | null }) {
-  return <Link href={view.href} className="memory-card">
+  const [opening, setOpening] = useState(false); const timer = useRef<ReturnType<typeof setTimeout> | null>(null); const openingRef = useRef(false);
+  useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
+  function begin() { if (openingRef.current) return false; openingRef.current = true; setOpening(true); timer.current = setTimeout(() => { openingRef.current = false; setOpening(false); }, 10_000); return true; }
+  return <Link href={view.href} aria-busy={opening || undefined} onClick={event => { if (!begin()) event.preventDefault(); }} className={`memory-card${opening ? " memory-card-opening" : ""}`}>
     <MemoryCover view={view} excerpt={excerpt} />
     <span className="memory-card-body">
       <span className="memory-card-kind"><KindGlyph kind={view.kind} />{view.kindLabel}</span>

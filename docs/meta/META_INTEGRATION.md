@@ -37,6 +37,10 @@ not returned through the public Ask API.
 
 The browser receives only the validated answer, status, token counts, exact Memory anchors and inert suggestions. It never receives the API key, provider payload or raw provider response. No database mutation, Plan, Ready Pack, reminder, calendar event or tool execution exists in Stage 8.
 
+## Plans entry point
+
+`Plan with Muse` uses the same authenticated `POST /api/home` boundary rather than a second planning agent. After the deterministic planner has collected essential goal/date information, it searches only the signed-in owner's saved Memories and sends at most the existing six evidence items to `muse-spark-1.3` through the Responses endpoint above. A validated answer may improve the reviewable schedule and explain the selected Memories; it cannot create a Plan, Ready Pack, task, action, event or external operation. The user chooses the Memories and explicitly creates the Plan through the existing owner-bound Plan and Ready Pack flow. If Muse is unavailable, the visible outline remains a clearly labelled deterministic, reviewable fallback. Automated tests exercise both paths with injected transport; no live Muse inference was made for this UX pass.
+
 ## Availability and cost controls
 
 The application requires `META_RATE_LIMIT_MODE=in-memory` as an explicit operational opt-in. It permits five provider calls per user per minute per server process. This is a real local gate, but not a distributed quota; a multi-instance deployment must replace it with shared atomic enforcement before release. Search/no-match requests do not consume the provider gate.

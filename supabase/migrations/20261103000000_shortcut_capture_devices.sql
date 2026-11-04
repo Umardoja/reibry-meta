@@ -45,7 +45,7 @@ begin
     raise exception using errcode = 'PT400', message = 'invalid device';
   end if;
   perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(v_user::text || ':capture-devices', 0));
-  if (select count(*) from public.capture_devices where user_id = v_user and revoked_at is null and expires_at > now()) >= 5 then
+  if (select count(*) from public.capture_devices d where d.user_id = v_user and d.revoked_at is null and d.expires_at > now()) >= 5 then
     raise exception using errcode = 'PT400', message = 'device limit';
   end if;
   return query insert into public.capture_devices(user_id, token_hash, name, expires_at)
@@ -79,7 +79,7 @@ create function public.capture_from_device(
   p_token_hash text, p_request_id uuid, p_source_url text, p_title text, p_metadata jsonb, p_dedupe_key text
 ) returns table(memory jsonb, duplicate boolean)
 language plpgsql security definer set search_path = '' as $$
-declare v_device public.capture_devices%rowtype; v_memory public.memories%rowtype; v_duplicate boolean := false;
+declare v_device public.capture_devices%rowtype; v_memory public.memories%rowtype; v_replay_memory jsonb; v_duplicate boolean := false;
 begin
   if p_token_hash !~ '^[0-9a-f]{64}$' or p_request_id is null or p_dedupe_key !~ '^[0-9a-f]{64}$'
     or p_source_url !~ '^https://[^/@[:space:]]+(/|$)' or char_length(p_source_url) > 2048
@@ -98,9 +98,15 @@ begin
   select * into v_device from public.capture_devices where token_hash = p_token_hash for update;
   if not found then raise exception using errcode = 'P0002', message = 'not found'; end if;
   if v_device.revoked_at is not null or v_device.expires_at <= now() then raise exception using errcode = 'P0003', message = 'not found'; end if;
-  select m, r.duplicate into v_memory, v_duplicate from public.capture_device_requests r join public.memories m on m.id = r.memory_id
+  -- PL/pgSQL cannot assign a record target alongside another INTO target.
+  -- Serialize the original stored row so a replay returns its exact Memory ID
+  -- and the duplicate status recorded by the first request.
+  select to_jsonb(m), r.duplicate into v_replay_memory, v_duplicate from public.capture_device_requests r join public.memories m on m.id = r.memory_id
     where r.device_id = v_device.id and r.request_id = p_request_id;
-  if found then return query select to_jsonb(v_memory), v_duplicate; return; end if;
+  if found then return query select v_replay_memory, v_duplicate; return; end if;
+  -- SELECT INTO assigns NULLs when no replay row exists; a fresh capture is
+  -- non-duplicate unless the owner-scoped dedupe insert below says otherwise.
+  v_duplicate := false;
   if (select count(*) from public.capture_device_requests where device_id = v_device.id and created_at > now() - interval '1 minute') >= 12 then
     raise exception using errcode = 'PT429', message = 'rate limited';
   end if;

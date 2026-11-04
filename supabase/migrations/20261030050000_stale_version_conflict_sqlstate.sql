@@ -28,7 +28,7 @@ begin
     start_date = case when p_set_start_date then p_start_date else start_date end,
     status = coalesce(p_status,status), life_context_id = case when p_set_life_context then p_life_context_id else life_context_id end,
     version = version + 1, updated_at = now() where id = p_plan_id and user_id = v_user;
-  if p_memory_ids is not null then delete from public.plan_memories where plan_id = p_plan_id and user_id = v_user; insert into public.plan_memories(plan_id,user_id,memory_id) select p_plan_id,v_user,value from unnest(p_memory_ids) value; end if;
+  if p_memory_ids is not null then delete from public.plan_memories as pm where pm.plan_id = p_plan_id and pm.user_id = v_user; insert into public.plan_memories(plan_id,user_id,memory_id) select p_plan_id,v_user,value from unnest(p_memory_ids) value; end if;
   return query select p_plan_id;
 end $$;
 

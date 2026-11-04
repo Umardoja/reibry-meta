@@ -63,11 +63,20 @@ test("a bounded storage timeout stays ambiguous and requires the caller to reuse
 
 test("migration keeps hashes private, device setup owner-scoped, trusted capture server-only, and durable replay/rate controls atomic", async () => {
   const sql = await readFile("supabase/migrations/20261103000000_shortcut_capture_devices.sql", "utf8"); const lower = sql.toLowerCase();
+  const verification = await readFile("supabase/tests/shortcut_capture.sql", "utf8");
   for (const fragment of ["token_hash text not null unique", "capture_device_requests", "primary key (device_id, request_id)", "for update", "pg_advisory_xact_lock", "interval '1 minute'", "force row level security", "grant execute on function public.capture_from_device", "to service_role", "revoke all on function public.create_capture_device", "to authenticated"])
     assert.ok(lower.includes(fragment), fragment);
   assert.doesNotMatch(sql, /grant execute on function public\.capture_from_device[^;]*authenticated/i);
   assert.match(lower, /revoke all on function[\s\S]*? from public/);
   assert.doesNotMatch(sql, /grant (select|insert|update|delete) on table public\.capture_devices to authenticated/i);
+  assert.match(sql, /from public\.capture_devices d where d\.user_id = v_user and d\.revoked_at is null and d\.expires_at > now\(\)/);
+  assert.match(sql, /select to_jsonb\(m\), r\.duplicate into v_replay_memory, v_duplicate/);
+  assert.doesNotMatch(sql, /select m, r\.duplicate into v_memory, v_duplicate/);
+  assert.match(sql, /if found then return query select v_replay_memory, v_duplicate; return; end if;[\s\S]*?v_duplicate := false;/);
+  assert.match(verification, /v_first\.duplicate is distinct from v_retry\.duplicate/);
+  assert.doesNotMatch(verification, /not v_retry\.duplicate/);
+  assert.match(verification, /v_first\.memory->>'user_id'/);
+  assert.doesNotMatch(verification, /select user_id::text from public\.memories/);
 });
 
 test("manual Capture and the untrusted fragment handoff remain explicit user actions", async () => {

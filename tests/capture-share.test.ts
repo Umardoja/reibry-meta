@@ -144,12 +144,12 @@ test("enrichment persists provider metadata, replaces only a placeholder title a
   const noted = await saveAndEnrich({ sourceType: "link", content: "https://example.com/noted", note: "my words" }, repo, ok);
   assert.equal(noted.memory.rawText, "my words"); assert.equal((noted.memory.metadata.provenance as Record<string, string>).note, "user");
 });
-test("capture UI: single submission, honest save/detail states, retry, and share prefill without auto-save", async () => {
+test("capture UI: single submission, honest save/detail states, and one-shot signed-in Shortcut auto-save", async () => {
   const form = await readFile("src/components/capture/capture-form.tsx", "utf8"); const handoff = await readFile("src/components/capture/share-handoff.tsx", "utf8");
   const page = await readFile("src/app/capture/page.tsx", "utf8"); const details = await readFile("src/components/capture/source-details.tsx", "utf8");
-  for (const text of ["if (inFlight.current) return", "Saving…", "Details ready", "Limited details", "Retry getting details", "Getting details…", "Already saved", "void getDetails(saved)", "if (detailsInFlight.current) return"]) assert.ok(form.includes(text), text);
-  assert.doesNotMatch(handoff, /fetch\(/, "a signed-out share is never saved automatically"); assert.match(page, /Nothing is saved without the user's tap/);
-  for (const text of ["Open original", "REIBRY couldn&apos;t retrieve a description.", "Nothing was watched or transcribed.", "referrerPolicy=\"no-referrer\""]) assert.ok(details.includes(text), text);
+  for (const text of ["if (inFlight.current) return", "Saving…", "Retry saving", "Details ready", "Limited details", "Getting details…", "Already saved", "void getDetails(saved)", "if (detailsInFlight.current) return", "const initialHash = window.location.hash", "setShortcutAutoSave(token)", "window.setTimeout(() => { void saveCapture(detected, \"\", sharedWithLink); }, 0)", "autoSaveHandled.current === shortcutAutoSave"]) assert.ok(form.includes(text), text);
+  assert.doesNotMatch(handoff, /fetch\(/, "a signed-out share is never saved automatically"); assert.match(page, /supported video links save automatically/i);
+  for (const text of ["Open original", "No description is available from this source.", "Additional details are shown here.", "referrerPolicy=\"no-referrer\""]) assert.ok(details.includes(text), text);
   assert.doesNotMatch(details, /dangerouslySetInnerHTML/);
 });
 test("live 12I defects: a repeated share fills a missing note and upgrades a placeholder title, never overwriting the user's words", async () => {

@@ -9,10 +9,8 @@ const userIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{
 const tagPattern = /^[\p{L}\p{N}_]{2,40}$/u;
 // This private pilot is intentionally pinned in code as well as configuration. A changed environment value cannot widen it.
 const approvedPilotIdentities = new Set([
-  "tiktok:7696611605374602518",
-  "tiktok:7702502616080829717",
-  "instagram:DOGnqc1DlIy",
-  "instagram:Dd6nk3hNS7l",
+  "tiktok:7520627479627844920",
+  "instagram:DfPxX1nRfxo",
 ]);
 
 export type SupadataDependencies = { env: Record<string, string | undefined>; fetch: typeof fetch; timeoutMs?: number };
@@ -45,7 +43,7 @@ function configuredPilotIdentities(env: Record<string, string | undefined>) {
   if (configured.size !== approvedPilotIdentities.size || values.length !== configured.size) return null;
   return [...approvedPilotIdentities].every(value => configured.has(value)) ? configured : null;
 }
-/** Requires both the exact disposable user and the four hard-pinned canonical pilot identities. */
+/** Requires both the exact disposable user and the two hard-pinned canonical pilot identities. */
 export function supadataPilotAllows(ownerId: string, link: ParsedCaptureUrl, env: Record<string, string | undefined>) {
   const configured = configuredPilotIdentities(env);
   return supadataGate(ownerId, env) && !link.shortLink && !!link.postId && !!configured && configured.has(link.identity);
@@ -136,7 +134,7 @@ function sourceMatch(link: ParsedCaptureUrl, data: Record<string, unknown>): Sou
   // A live, one-shot TikTok response on 2026-11-02 had the documented platform and exact numeric video ID but omitted url.
   // A live Instagram response used the exact saved shortcode but omitted url. In either narrowly scoped case,
   // the pre-validated canonical owner Memory supplies the URL. The fetcher still requires the exact owner and
-  // four-item pilot allowlist; the trusted writer re-checks the locked owned link Memory before persistence.
+  // two-item pilot allowlist; the trusted writer re-checks the locked owned link Memory before persistence.
   if (data.url === undefined) {
     if (link.platform === "tiktok" && link.postId && data.id === link.postId) return { returned: link, diagnostic: null };
     if (exactInstagramShortcode(link, data.id)) return { returned: link, diagnostic: null };

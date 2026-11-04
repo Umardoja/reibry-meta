@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { enrichLink, type MetadataFetch, type MetadataResult } from "../src/lib/capture/enrichment.ts";
 import { capture, enrichSavedLink } from "../src/lib/capture/service.ts";
-import { parseSharedFragment, parseSharedPayload, SHARED_URL_MAX } from "../src/lib/capture/share.ts";
+import { parseSharedFragment, parseSharedPayload, readShareArrival, SHARED_URL_MAX } from "../src/lib/capture/share.ts";
 import type { Memory } from "../src/lib/memory/contracts.ts";
 import { createMemoryTestState, type MemoryTestState } from "./support/in-memory-memory-repository.ts";
 import { createInMemoryEnrichmentWriter, trackedRepository } from "./support/capture-flow.ts";
@@ -33,6 +33,15 @@ test("fragment handoff (#url=...) decodes safely and rejects anything that is no
   assert.equal(parseSharedFragment(`#url=${encodeURIComponent(`${full(POST)}?is_from_webapp=1&_t=x`)}`)?.url, `${full(POST)}?is_from_webapp=1&_t=x`);
   assert.equal(parseSharedFragment(`#text=${encodeURIComponent("Look https://vt.tiktok.com/ZSxyz789/ now")}`)?.url, "https://vt.tiktok.com/ZSxyz789/");
   for (const bad of ["", "#", "#url=javascript%3Aalert(1)", "#url=%E0%A4%A", `#url=${"x".repeat(9_000)}`, "#url=https%3A%2F%2Fintranet%2Fsecret"]) assert.equal(parseSharedFragment(bad), null, bad);
+});
+
+test("the exact iPhone TikTok and Instagram fragment forms survive decoding, including Instagram tracking parameters", () => {
+  const tiktok = "https://vt.tiktok.com/ZSpdG4bL8/";
+  const instagram = "https://www.instagram.com/reel/DfPxX1nRfxo/?vrfl=MWNkODZvMTltdXE5Ng==";
+  for (const url of [tiktok, instagram]) {
+    const arrived = readShareArrival("", `#url=${encodeURIComponent(url)}`);
+    assert.equal(arrived.arrived, true); assert.equal(arrived.payload?.url, url);
+  }
 });
 test("Capture page: prefill only, no referrer, link stripped from the address bar, signed-out handoff kept in this tab", async () => {
   const page = await readFile("src/app/capture/page.tsx", "utf8"); const handoff = await readFile("src/components/capture/share-handoff.tsx", "utf8");

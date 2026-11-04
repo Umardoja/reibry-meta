@@ -17,7 +17,8 @@ export type HomeIntent = "MEMORY_SEARCH" | "GROUNDED_ANSWER" | "LIFE_UPCOMING" |
   "LIFE_DRAFT" | "PLANNING_DRAFT" | "ACTION_REVIEW" | "CLARIFICATION" | "UNSUPPORTED" | "CONVERSATION";
 
 export type HomeHistoryTurn = { role: "user" | "assistant"; text: string };
-export type HomeRequest = { message: string; timezone: string; mode: "message" | "confirm-life"; history: HomeHistoryTurn[]; references: string[] };
+/** `plan` is an explicit user selection from Plans, not a model-selected tool or persistence operation. */
+export type HomeRequest = { message: string; timezone: string; mode: "message" | "confirm-life" | "plan"; history: HomeHistoryTurn[]; references: string[] };
 export type HomeLifeDraft = NewLifeContext & { sourceText: string; requiresConfirmation: true };
 export type HomeLifeItem = Pick<LifeContext, "id" | "type" | "title" | "description" | "startDate" | "endDate" | "status"> & {
   href: string;
@@ -66,7 +67,7 @@ export function parseHomeBody(value: unknown): HomeRequest {
   if (typeof timezone !== "string" || !timezone.trim() || timezone.length > HOME_TIMEZONE_MAX) throw new HomeContractError("Use a valid timezone.");
   try { new Intl.DateTimeFormat("en", { timeZone: timezone }); } catch { throw new HomeContractError("Use an IANA timezone."); }
   const mode = input.mode === undefined ? "message" : input.mode;
-  if (mode !== "message" && mode !== "confirm-life") throw new HomeContractError("Unsupported Home operation.");
+  if (mode !== "message" && mode !== "confirm-life" && mode !== "plan") throw new HomeContractError("Unsupported Home operation.");
   return { message: input.message.trim(), timezone: timezone.trim(), mode, history: parseHistory(input.history), references: parseReferences(input.references) };
 }
 

@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 // A shared link can be private: never send this page's address (which may carry ?url=) to any other site.
 export const metadata: Metadata = { referrer: "no-referrer" };
 
-/** Share-sheet / iPhone Shortcut handoff: ?url=, ?text= and ?title= (or the same in the #fragment) only prefill the form. Nothing is saved without the user's tap. */
+/** A signed-in iPhone Shortcut #url= handoff saves supported video links once; query and manual Capture stay explicit. */
 export default async function CapturePage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const params = await searchParams;
   const shared = parseSharedPayload(name => { const value = params[name]; return typeof value === "string" ? value : null; });
@@ -23,8 +23,8 @@ export default async function CapturePage({ searchParams }: { searchParams: Prom
     <CaptureForm shared={shared} />
     <section className="capture-tips" aria-labelledby="capture-tips-heading"><h2 id="capture-tips-heading">Saving from other apps</h2>
       <ol><li>In TikTok, YouTube or Instagram, tap <strong>Share → Copy link</strong>, come back here and tap <strong>Paste</strong>.</li>
-        <li>On iPhone, add the <strong>Save to REIBRY</strong> Shortcut once, then choose it from the Share menu.</li>
-        <li>REIBRY saves the link first, then adds any title, creator and cover the platform shares. It never watches the video for you unless you say so.</li></ol></section>
+        <li>On iPhone, choose your existing <strong>Save to REIBRY</strong> Shortcut from the Share menu. Supported video links save automatically.</li>
+        <li>REIBRY saves the link first, then adds any available title, creator and cover.</li></ol></section>
     {/* Experimental: manual video upload is off for the consumer product (owner decision, Stage 12J-3). */}
     {experimentalVideoUploadEnabled() && <VideoCapture />}
   </div></Container>;

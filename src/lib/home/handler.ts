@@ -148,7 +148,7 @@ export async function handleHomeRequest(request: Request, factory: HomeContextFa
   if (request.headers.get("origin") !== expectedOrigin || request.headers.get("sec-fetch-site") === "cross-site") return failure("VALIDATION_ERROR", 403);
   const trace = new HomeTrace();
   try { const result = await bounded(async signal => {
-    const input = parseHomeBody(await readJson(request, signal)); const intent = classifyHomeIntent(input.message, input.timezone, now());
+    const input = parseHomeBody(await readJson(request, signal)); const intent = input.mode === "plan" ? "PLANNING_DRAFT" : classifyHomeIntent(input.message, input.timezone, now());
     trace.enter("auth"); const context = await factory(signal); assertOwner(context); trace.enter(intent === "LIFE_UPCOMING" || intent === "LIFE_UNDATED" || intent === "LIFE_DRAFT" ? "life" : intent === "ACTION_REVIEW" ? "actions" : intent === "PLANNING_DRAFT" ? "planning" : "conversation");
     if (input.mode === "confirm-life" && intent !== "LIFE_DRAFT") throw new HomeContractError("Only a Life draft can be confirmed.");
     if (intent === "LIFE_UPCOMING") { const items = filterLife(await context.lifeRepository.listUpcoming(now().toISOString(), 50), input.message); const data = emptyHomeResponse(intent, items.length === 1 ? "Here's what's coming up next." : items.length ? `Here are the next ${items.length} things coming up.` : "Nothing is coming up in Life right now. Tell me about a plan and I'll draft it for you."); data.lifeContexts = items.map(homeLifeItem); return { status: 200, data, error: null }; }
@@ -156,17 +156,35 @@ export async function handleHomeRequest(request: Request, factory: HomeContextFa
     if (intent === "ACTION_REVIEW") { const proposals = (await context.actionRepository.listProposals()).slice(0, HOME_RESULT_MAX).map(proposalView); const data = emptyHomeResponse(intent, proposals.length ? "Here's what's waiting for your review. Nothing is saved until you confirm it." : "There's nothing waiting for your review right now."); data.actionProposals = proposals; return { status: 200, data, error: null }; }
     if (intent === "PLANNING_DRAFT") {
       // First parse without evidence. A missing date or exam subject gets one concise question and no provider call.
-      const parsed = buildPlanningDraft({ message: input.message, timezone: input.timezone, now: now(), candidates: [] });
+      const parsed = buildPlanningDraft({ message: input.message, timezone: input.timezone, now: now(), candidates: [], forcePlanning: input.mode === "plan" });
       if (!parsed.draft) return { status: 200, data: emptyHomeResponse("CLARIFICATION", parsed.question || "Tell me what you are preparing for and when it is due."), error: null };
       trace.enter("retrieval");
       const evidence = await searchOwnedMemories(context.memoryRepository, parsed.query || parsed.draft.title, HOME_RESULT_MAX);
-      const planned = buildPlanningDraft({ message: input.message, timezone: input.timezone, now: now(), candidates: evidence.items });
+      const planned = buildPlanningDraft({ message: input.message, timezone: input.timezone, now: now(), candidates: evidence.items, forcePlanning: input.mode === "plan" });
       if (!planned.draft) throw new HomeContractError("Unable to prepare a planning draft.");
       const data = emptyHomeResponse("PLANNING_DRAFT", evidence.items.length
         ? "I found saved Memories that may help. Choose only the ones you want in this Plan; the schedule is suggested advice, not a claim about those sources."
         : "I couldn't find a clearly relevant saved Memory. Here's a general preparation outline; you can still create a Plan without pretending you have source-backed resources.");
       data.planningDraft = planned.draft;
       data.memories = evidence.items;
+      // A valid planning request gets one existing, grounded Muse pass. The deterministic draft remains the safe fallback:
+      // it owns dates and confirmation semantics, while Muse can improve the practical sequence only from the owner-scoped evidence.
+      if (!limiter.consume(context.userId)) { data.message = "Your reviewable outline is ready. Muse is temporarily taking a breather, so it wasn't used for this one."; return { status: 200, data, error: null }; }
+      trace.enter("provider"); trace.providerInvoked = true;
+      try {
+        const answer = await reasoner({ message: input.message, history: input.history, items: evidence.items, shownEarlier: new Map(), lifeContexts: [], timezone: input.timezone,
+          today: new Intl.DateTimeFormat("en-GB", { dateStyle: "full", timeStyle: "short", timeZone: input.timezone }).format(now()), externalActionRequested: false, referenceResolution: null }, signal);
+        trace.providerOutcome = "valid"; trace.usage = answer.usage;
+        const schedule = answer.proposed_next_steps.length ? answer.proposed_next_steps.map(step => ({ title: step.title, description: step.description })) : planned.draft.schedule;
+        data.planningDraft = { ...planned.draft, schedule, description: [answer.answer, ...schedule.map((step, index) => `${index + 1}. ${step.title}: ${step.description}`)].join("\n") };
+        data.groundedAnswer = { ...answer, action_proposals: [] };
+        data.message = answer.answer;
+      } catch (error) {
+        if (!(error instanceof MetaClientError)) throw error;
+        trace.providerOutcome = error.diagnostic ? `${error.code}:${error.diagnostic}` : error.code;
+        data.fallbackReason = error.code;
+        data.message = "Your reviewable outline is ready. Muse wasn't available for this one, so it uses the saved Memories and planning details you can see below.";
+      }
       return { status: 200, data, error: null };
     }
     if (intent !== "LIFE_DRAFT") return converse(input, intent, context, reasoner, limiter, signal, now, trace);

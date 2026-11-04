@@ -27,7 +27,7 @@ function context(memories: Memory[] = [memory()], lives: LifeContext[] = []) { c
   actionRepository: createInMemoryActionRepository(userA, actionState, { now: () => now.toISOString() }), actionState };
 }
 type Extra = { history?: Array<{ role: string; text: string }>; references?: string[]; [key: string]: unknown };
-function request(message: string, mode: "message" | "confirm-life" = "message", extra: Extra = {}) { return new Request(`${origin}/api/home`, { method: "POST", headers: { Origin: origin, "Sec-Fetch-Site": "same-origin", "Content-Type": "application/json" }, body: JSON.stringify({ message, mode, timezone: "UTC", ...extra }) }); }
+function request(message: string, mode: "message" | "confirm-life" | "plan" = "message", extra: Extra = {}) { return new Request(`${origin}/api/home`, { method: "POST", headers: { Origin: origin, "Sec-Fetch-Site": "same-origin", "Content-Type": "application/json" }, body: JSON.stringify({ message, mode, timezone: "UTC", ...extra }) }); }
 const noProvider: ConversationReasoner = async () => { throw new Error("provider must not run"); };
 /** Mock Muse: cites the first evidence item when present, otherwise replies conversationally. Records every input. */
 function reasoner(seen: ConversationInput[] = [], steps = true): ConversationReasoner { return async input => { seen.push(input); const first = input.items[0];
@@ -36,7 +36,7 @@ function reasoner(seen: ConversationInput[] = [], steps = true): ConversationRea
     : { answer: "Hi! What would you like to find or plan?", evidence_status: "not_needed" as const, cited_memory_ids: [], proposed_next_steps: [] };
   return { ...answer, provider_called: true, model: "muse-spark-1.3", usage: { inputTokens: 20, outputTokens: 12, totalTokens: 32 }, action_proposals: [],
     citations: answer.cited_memory_ids.map(id => ({ memory_id: id, title: first!.displayTitle, memory_href: first!.memoryHref, evidence_limit: first!.sourceType === "link" ? "metadata-only-link" as const : "stored-note" as const })) }; }; }
-async function run(message: string, value = context(), model: ConversationReasoner = noProvider, mode: "message" | "confirm-life" = "message", extra: Extra = {}, limiter = createInMemoryAskRateLimiter()) {
+async function run(message: string, value = context(), model: ConversationReasoner = noProvider, mode: "message" | "confirm-life" | "plan" = "message", extra: Extra = {}, limiter = createInMemoryAskRateLimiter()) {
   return handleHomeRequest(request(message, mode, extra), async () => value, model, limiter, origin, 5_000, () => now); }
 
 test("routing keeps trusted reads and Life drafts deterministic and sends ordinary language to conversation", () => {
@@ -55,6 +55,8 @@ const planningItem = (overrides: Partial<RetrievalItem> = {}): RetrievalItem => 
 test("planning drafts are dated, grounded and honest about missing essentials", () => {
   const exam = buildPlanningDraft({ message: "I have a biology exam in 7 days. Help me prepare.", timezone: "UTC", now, candidates: [planningItem()] });
   assert.equal(exam.question, null); assert.equal(exam.draft?.kind, "exam"); assert.equal(exam.draft?.title, "Biology exam"); assert.equal(exam.draft?.candidateMemories[0].memoryId, memoryId); assert.match(exam.draft?.description || "", /Suggested 7 days/);
+  const spokenDate = buildPlanningDraft({ message: "I have a biology exam on 14 November 2026. Help me prepare.", timezone: "UTC", now, candidates: [planningItem()] });
+  assert.equal(spokenDate.question, null); assert.equal(spokenDate.draft?.startDate, "2026-11-14T00:00:00.000Z");
   const birthday = buildPlanningDraft({ message: "My mum's birthday is next Saturday. Help me plan something memorable.", timezone: "UTC", now, candidates: [planningItem({ displayTitle: "Butterfly birthday cake", match: { reason: "Stored source metadata matches this query.", score: 70, fields: ["metadata"] } })] });
   assert.equal(birthday.draft?.kind, "celebration"); assert.equal(birthday.draft?.title, "Mum's birthday"); assert.equal(birthday.draft?.candidateMemories[0].displayTitle, "Butterfly birthday cake");
   const project = buildPlanningDraft({ message: "Help me plan my API project deadline next Friday.", timezone: "UTC", now, candidates: [] });
@@ -62,11 +64,26 @@ test("planning drafts are dated, grounded and honest about missing essentials", 
   assert.match(buildPlanningDraft({ message: "I have an exam. Help me prepare.", timezone: "UTC", now, candidates: [] }).question || "", /due/i);
   assert.match(buildPlanningDraft({ message: "I have an exam next Friday. Help me prepare.", timezone: "UTC", now, candidates: [] }).question || "", /subject/i);
 });
-test("Home planning drafts search only owner evidence and do not invoke Muse or create a Plan", async () => {
+test("Home planning drafts use one grounded Muse pass after essential details and do not create a Plan", async () => {
   const biology = memory({ title: "Biology revision video", rawText: "Cells and genetics practice for the biology exam." });
-  const value = context([biology]); const result = await run("I have a biology exam in 7 days. Help me prepare.", value, noProvider);
+  const value = context([biology]); const seen: ConversationInput[] = []; const result = await run("I have a biology exam in 7 days. Help me prepare.", value, reasoner(seen));
   assert.equal(result.status, 200); assert.equal(result.data?.intent, "PLANNING_DRAFT"); assert.equal(result.data?.planningDraft?.candidateMemories[0].memoryId, biology.id);
+  assert.equal(seen.length, 1); assert.equal(result.data?.groundedAnswer?.model, "muse-spark-1.3"); assert.equal(result.data?.planningDraft?.schedule[0]?.title, "Compare hotels");
   assert.equal(value.actionState.proposals.size, 0); assert.equal(value.actionState.cards.size, 0);
+});
+test("a planning draft remains reviewable when Muse is unavailable", async () => {
+  const result = await run("I have a biology exam in 7 days. Help me prepare.", context([memory({ title: "Biology revision", rawText: "Cells and genetics." })]), async () => { throw new MetaClientError("META_UNAVAILABLE"); });
+  assert.equal(result.status, 200); assert.ok(result.data?.planningDraft); assert.equal(result.data?.groundedAnswer, null); assert.equal(result.data?.fallbackReason, "META_UNAVAILABLE");
+});
+test("the explicit Plan with Muse operation cannot render a Life draft as a blank planning success", async () => {
+  const result = await run("I have an exam next Friday.", context([memory({ title: "Biology revision", rawText: "Cells and genetics." })]), noProvider, "plan");
+  assert.equal(result.status, 200); assert.equal(result.data?.intent, "CLARIFICATION"); assert.equal(result.data?.lifeDraft, null); assert.equal(result.data?.planningDraft, null);
+  assert.match(result.data?.message || "", /subject/i);
+  const draft = await run("I have a biology exam next Friday.", context([memory({ title: "Biology revision", rawText: "Cells and genetics." })]), reasoner(), "plan");
+  assert.equal(draft.status, 200); assert.equal(draft.data?.intent, "PLANNING_DRAFT"); assert.ok(draft.data?.planningDraft); assert.equal(draft.data?.lifeDraft, null);
+  assert.ok(draft.data?.planningDraft?.schedule.length, "a successful plan has visible schedule rows");
+  const component = await readFile("src/components/plans/plan-with-muse.tsx", "utf8");
+  assert.match(component, /mode: "plan"/); assert.match(component, /!body\.data\.planningDraft/);
 });
 test("greetings reach Muse without Memory retrieval", async () => { const seen: ConversationInput[] = []; const result = await run("Hey", context(), reasoner(seen));
   assert.equal(result.status, 200); assert.equal(result.data?.intent, "CONVERSATION"); assert.equal(result.data?.message, "Hi! What would you like to find or plan?");

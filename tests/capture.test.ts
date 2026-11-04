@@ -142,6 +142,16 @@ test("capture endpoint authenticates, rejects forged ownership and preserves sam
   }
 });
 
+test("an authenticated Shortcut-style vt.tiktok.com handoff commits immediately and repeats as one owner-scoped Memory", async () => {
+  const state = createMemoryTestState(); const repo = trackedRepository(userA, state);
+  const body = { sourceType: "link", content: "https://vt.tiktok.com/ZSg3F9G3P/" };
+  const first = await handleCaptureRequest(request(body), context(repo));
+  assert.equal(first.status, 201); const saved = (first.data as { memory: { id: string; sourceUrl: string; metadata: { platform: string; enrichment: string } } }).memory;
+  assert.equal(saved.sourceUrl, body.content); assert.equal(saved.metadata.platform, "tiktok"); assert.equal(saved.metadata.enrichment, "pending");
+  const repeated = await handleCaptureRequest(request(body), context(repo));
+  assert.equal(repeated.status, 200); assert.equal((repeated.data as { memory: { id: string } }).memory.id, saved.id);
+});
+
 test("storage failures have no mock fallback and private sources are not logged", async () => {
   const repo = repository(); const original = repo.createUnique; repo.createUnique = async () => { throw new MemoryRepositoryFailure("STORAGE_UNAVAILABLE"); };
   const messages: unknown[][] = []; const originalError = console.error; console.error = (...args) => { messages.push(args); };

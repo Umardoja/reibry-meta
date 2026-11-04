@@ -2,6 +2,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readShareArrival } from "../src/lib/capture/share.ts";
+import { readFile } from "node:fs/promises";
 import type { Memory } from "../src/lib/memory/contracts.ts";
 import { presentMemory, safeThumbnail, savedLabel } from "../src/lib/memory/presentation.ts";
 
@@ -14,14 +15,37 @@ test("a TikTok saved before details arrived: honest generic title, creator from 
   const view = presentMemory(base({ title: "TikTok video by @baker.jo", metadata: { capture: "link", platform: "tiktok", enrichment: "partial", enrichmentReason: "provider-returned-no-title", author: "@baker.jo", provenance: { title: "reibry-placeholder", author: "url" } } }), now);
   assert.equal(view.title, "Saved TikTok video"); assert.equal(view.titleIsGeneric, true); assert.equal(view.creator, "@baker.jo");
   assert.equal(view.summary, null, "no description from a URL alone"); assert.equal(view.thumbnail, null); assert.equal(view.kind, "tiktok"); assert.equal(view.openLabel, "Open on TikTok");
-  assert.equal(view.details.state, "limited"); assert.equal(view.details.message, "Saved. REIBRY couldn't retrieve this video's description or cover.");
+  assert.equal(view.details.state, "limited"); assert.equal(view.details.message, "No description or cover is available from this source.");
   assert.doesNotMatch(view.details.message ?? "", /confirmed|didn't share/, "never implies the video itself has no caption");
-  assert.ok(view.unknown.some(item => /hasn't watched/.test(item)), "says the video itself was not watched");
+  assert.ok(view.unknown.some(item => /Video content beyond the saved source details/.test(item)), "does not imply that source metadata is video analysis");
   assert.doesNotMatch(JSON.stringify({ ...view, originalUrl: null }), engineering);
 });
 test("a real title is kept even if an old placeholder marker was left behind (live MDN case)", () => {
   const view = presentMemory(base({ title: "JavaScript | MDN", sourceUrl: "https://developer.mozilla.org/en-US/docs/Web/JavaScript", metadata: { platform: "web", siteName: "MDN Web Docs", provenance: { title: "reibry-placeholder" } } }), now);
   assert.equal(view.title, "JavaScript | MDN"); assert.equal(view.kindLabel, "MDN Web Docs");
+});
+test("legacy operational errors are not displayed as saved Memory facts", () => {
+  const view = presentMemory(base({ title: "Memory library could not be loaded", metadata: { platform: "tiktok", enrichment: "unavailable", caption: "Source details could not be loaded" } }));
+  assert.equal(view.title, "Saved TikTok video"); assert.equal(view.summary, null); assert.ok(!JSON.stringify(view).includes("could not be loaded"));
+});
+test("external source details use natural customer-facing labels while provenance stays internal", async () => {
+  const view = presentMemory(base({ title: "TikTok video", metadata: { platform: "tiktok", caption: "A cake idea", author: "Cake maker", provenance: { caption: "supadata-unverified", author: "supadata-unverified" } } }));
+  assert.equal(view.summary?.from, "Saved description");
+  assert.deepEqual(view.knows[0], { heading: "Details", items: ["Creator: Cake maker", "Description: A cake idea"] });
+  const details = await readFile("src/components/capture/source-details.tsx", "utf8");
+  assert.match(details, /Additional details are shown here\./);
+  assert.doesNotMatch(details, /origin has not been verified|official caption/i);
+});
+test("legacy external-detail placeholder titles yield to the real saved description", () => {
+  const view = presentMemory(base({
+    title: "Saved Instagram details: Lemon cake recipe",
+    metadata: { platform: "instagram", format: "reel", caption: "Lemon cake recipe with raspberry layers", author: "Bake Studio", provenance: { caption: "supadata-unverified", author: "supadata-unverified" } },
+  }), now);
+  assert.equal(view.title, "Saved Instagram reel");
+  assert.equal(view.titleIsGeneric, true);
+  assert.deepEqual(view.summary, { text: "Lemon cake recipe with raspberry layers", from: "Saved description" });
+  assert.equal(view.creator, "Bake Studio");
+  assert.doesNotMatch(view.title, /details/i);
 });
 test("platform caption, cover and creator are shown and attributed; the user's note stays separate", () => {
   const view = presentMemory(base({ title: "Pink birthday cake tutorial", sourceUrl: "https://www.youtube.com/watch?v=abc", rawText: "For Mum's 60th",
@@ -60,4 +84,20 @@ test("share arrival: an empty #url= from a broken Shortcut is reported, not sile
   assert.equal(readShareArrival("", `#url=${encodeURIComponent("https://vm.tiktok.com/ZMabc123/")}`).payload?.url, "https://vm.tiktok.com/ZMabc123/");
   assert.equal(readShareArrival("?url=javascript%3Aalert(1)", "").payload, null); assert.equal(readShareArrival("?url=javascript%3Aalert(1)", "").arrived, true);
   assert.equal(readShareArrival("", "").arrived, false);
+});
+
+test("the profile menu dismisses after selection, outside interaction, and Escape", async () => {
+  const shell = await readFile("src/components/layout/app-shell.tsx", "utf8");
+  for (const text of ["onClickCapture={closeAccountMenu}", "document.addEventListener(\"pointerdown\"", "event.key === \"Escape\"", "removeAttribute(\"open\")"]) assert.ok(shell.includes(text), text);
+});
+
+test("navigation and Memory cards acknowledge one activation immediately and suppress repeat taps", async () => {
+  const navigation = await readFile("src/components/layout/navigation.tsx", "utf8");
+  const card = await readFile("src/components/memory/memory-visual.tsx", "utf8");
+  const loading = await readFile("src/app/loading.tsx", "utf8");
+  for (const text of ["router.prefetch", "pendingHrefRef", "aria-busy", "nav-pending", "event.preventDefault()"])
+    assert.ok(navigation.includes(text), text);
+  for (const text of ["openingRef", "memory-card-opening", "aria-busy", "event.preventDefault()"])
+    assert.ok(card.includes(text), text);
+  assert.match(loading, /route-skeleton/);
 });

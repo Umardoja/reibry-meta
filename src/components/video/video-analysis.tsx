@@ -5,9 +5,9 @@ import type { Memory } from "@/lib/memory/contracts";
 import { nextVideoStep, type MemoryVideo, type VideoStep } from "@/lib/video/contracts";
 
 const failures: Record<string, string> = {
-  "provider-timeout": "Meta took too long to respond.", "provider-unavailable": "Meta's service was unavailable.", "provider-rejected": "Meta rejected the request.",
-  "invalid-provider-output": "Meta's answer couldn't be verified, so nothing was saved from it.", "media-unavailable": "The saved video couldn't be read.",
-  "audio-extraction-failed": "The audio couldn't be extracted from the video.", "not-configured": "Video analysis isn't set up on this server.",
+  "provider-timeout": "Video details are unavailable right now.", "provider-unavailable": "Video details are unavailable right now.", "provider-rejected": "Video details are unavailable for this video.",
+  "invalid-provider-output": "Video details are unavailable for this video.", "media-unavailable": "Video details are unavailable for this video.",
+  "audio-extraction-failed": "Audio details are unavailable for this video.", "not-configured": "Video details are unavailable right now.",
 };
 const seconds = (ms: number) => `${(ms / 1_000).toFixed(1)} s`;
 
@@ -64,8 +64,8 @@ export function VideoAnalysisPanel({ video }: { video: MemoryVideo }) {
     <ul>{visual.observations.map((item, index) => <li key={index}>{item}</li>)}</ul>
     <h3>What was said</h3>
     {!video.hasAudio ? <p className="field-hint">This video has no audio track.</p>
-      : !video.transcript ? <p className="field-hint">Speech hasn&apos;t been transcribed yet.</p>
-      : video.transcript.text ? <><p className="field-hint">Transcribed by Muse Voice Transcribe. Machine transcripts can mishear names.</p>
+      : !video.transcript ? <p className="field-hint">Speech details are not available.</p>
+      : video.transcript.text ? <><p className="field-hint">Automatic transcript; names and uncommon words may need a quick check.</p>
         <ul>{video.transcript.turns.map((turn, index) => <li key={index}><strong>{seconds(turn.startMs)}–{seconds(turn.endMs)}:</strong> {turn.text}</li>)}</ul></>
       : <p className="field-hint">No speech was transcribed.</p>}
     {visual.interpretations.length > 0 && <><h3>Interpretations</h3><p className="field-hint">Inferences from what was seen, not observed facts.</p>

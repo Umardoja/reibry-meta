@@ -69,13 +69,13 @@ test("shared words are shown with honest provenance, searchable, and cited to Ho
   assert.deepEqual(view.summary, { text: "Easy creamy garlic pasta recipe: spaghetti, parmesan, spinach", from: "Shared with the link" });
   assert.ok(view.knows.some(group => group.heading === "Shared with the link"));
   assert.ok(view.unknown.includes("A caption or description"), "still honest that the platform's own description was not retrieved");
-  assert.equal(view.details.message, "Saved. REIBRY couldn't retrieve this video's description or cover.");
+  assert.equal(view.details.message, "No description or cover is available from this source.");
 });
 
 test("Capture keeps shared words out of the note box, lets the user drop them, and Home is told they are not an official caption", async () => {
   const form = await readFile("src/components/capture/capture-form.tsx", "utf8");
   assert.match(form, /const prefill = \(payload: SharedPayload \| null\) => payload\?\.url \?\? ""/);
-  for (const text of ["Shared with the link:", "Don&apos;t keep", "sharedText: sharedWithLink", "detected.url === initial?.url"]) assert.ok(form.includes(text), text);
+  for (const text of ["Shared with the link:", "Don&apos;t keep", "incomingSharedText ? { sharedText: incomingSharedText }", "detected.url === initial?.url"]) assert.ok(form.includes(text), text);
   const prompt = await readFile("src/lib/ai/meta/grounded-reasoning.ts", "utf8");
   assert.match(prompt, /shared_with_link, sent by the phone's share sheet: not an\s+official caption/);
 });

@@ -19,7 +19,7 @@ export function MemoryDetail({ id, videoTools = false }: { id: string; videoTool
     // A cleanup abort (unmount, or development mode running effects twice) is not a failure; a 12 s timeout still is.
     let cancelled = false; const controller = new AbortController(); const timer = setTimeout(() => controller.abort(), 12_000);
     void fetch(`/api/memories/${id}`, { cache: "no-store", signal: controller.signal }).then(async response => { const body = await response.json(); if (!response.ok || !body?.data) throw new Error(); if (!cancelled) setMemory(body.data); })
-      .catch(() => { if (!cancelled) setError("This Memory couldn't be found. It may have been deleted."); }).finally(() => clearTimeout(timer));
+      .catch(() => { if (!cancelled) setError("This Memory is unavailable. It may have been deleted."); }).finally(() => clearTimeout(timer));
     void fetch("/api/plans?limit=100", { cache: "no-store", signal: controller.signal }).then(async response => { const body = await response.json();
       if (!cancelled && response.ok && Array.isArray(body?.data)) setPlans(body.data.filter((plan: { memories?: Array<{ id: string }> }) => plan.memories?.some(item => item.id === id)).map((plan: RelatedPlan) => ({ id: plan.id, title: plan.title }))); })
       .catch(() => { /* Related plans are optional. */ });
@@ -36,9 +36,9 @@ export function MemoryDetail({ id, videoTools = false }: { id: string; videoTool
   async function refreshDetails() {
     if (details.busy) return; setDetails({ busy: true, message: "" });
     try { const response = await fetch(`/api/capture/${id}/details`, { method: "POST", credentials: "same-origin", cache: "no-store", signal: AbortSignal.timeout(15_000) });
-      const body = await response.json(); if (!response.ok || !body?.data?.memory) throw new Error(body?.error?.message || "Details are still unavailable.");
+      const body = await response.json(); if (!response.ok || !body?.data?.memory) throw new Error("More details are unavailable right now.");
       setMemory(body.data.memory); setDetails({ busy: false, message: "" }); }
-    catch (cause) { setDetails({ busy: false, message: cause instanceof Error && cause.name !== "TimeoutError" ? cause.message : "Getting details took too long. Your link is still saved." }); }
+    catch { setDetails({ busy: false, message: "More details are unavailable right now. Your link is still saved." }); }
   }
   if (error && !memory) return <RequireAuth><div className="empty-state"><h2>Memory unavailable</h2><p>{error}</p><Link href="/memories" className="button btn-ghost">Back to Memories</Link></div></RequireAuth>;
   if (!memory) return <RequireAuth><div className="memory-page" aria-busy="true"><div className="skeleton-card" aria-hidden="true"><span /><span /><span /></div><p role="status" className="sr-only">Opening this Memory…</p></div></RequireAuth>;
@@ -57,19 +57,19 @@ export function MemoryDetail({ id, videoTools = false }: { id: string; videoTool
         {view.note && <p className="memory-note"><span className="memory-note-label">Your note</span>{view.note}</p>}
         {view.hashtags.length > 0 && <p className="memory-tags">{view.hashtags.map(tag => <span key={tag}>#{tag}</span>)}</p>}
         {view.details.state === "limited" && <div className="memory-limit"><span>{view.details.message}</span></div>}
-        {view.details.state === "pending" && <div className="memory-limit"><span>Details haven&apos;t been fetched yet. The link is saved either way.</span></div>}
+        {view.details.state === "pending" && <div className="memory-limit"><span>More details will appear here when available.</span></div>}
         <div className="memory-actions">
           {view.originalUrl && <a className="button btn-primary" href={view.originalUrl} target="_blank" rel="noopener noreferrer">{IC.external}{view.openLabel}</a>}
           {player && <button type="button" className="button btn-ghost" aria-expanded={preview} aria-controls="tiktok-preview" onClick={() => setPreview(open => !open)}>{preview ? "Hide preview" : "Preview video"}</button>}
           <Link className="button btn-ghost" href={`/plans?memory=${view.id}`}>{IC.plan}Use in a plan</Link>
-          {(view.details.state === "limited" || view.details.state === "pending") && <button type="button" className="button btn-ghost" disabled={details.busy} onClick={() => void refreshDetails()}>{details.busy ? "Getting details…" : "Try getting details again"}</button>}
+          {(view.details.state === "limited" || view.details.state === "pending") && <button type="button" className="button btn-ghost" disabled={details.busy} onClick={() => void refreshDetails()}>{details.busy ? "Getting details…" : "Try again"}</button>}
         </div>
         {details.message && <p className="field-hint" role="status">{details.message}</p>}
         {/* Stage 12K-1: TikTok's official player, loaded only when asked for. What it shows stays inside TikTok's frame. */}
         {player && preview && <div className="tiktok-preview" id="tiktok-preview">
           <iframe src={player} title="TikTok's player for this video" allow="fullscreen; encrypted-media; picture-in-picture" referrerPolicy="strict-origin-when-cross-origin"
             sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-presentation" />
-          <p className="field-hint">Played by TikTok&apos;s own player. REIBRY doesn&apos;t read, save or search what it shows.</p></div>}
+          <p className="field-hint">This preview stays on TikTok.</p></div>}
         {plans && plans.length > 0 && <section className="related-plans" aria-labelledby="related-plans"><h2 id="related-plans" className="eyebrow">In your plans</h2>
           {plans.map(plan => <Link key={plan.id} href={`/plans/${plan.id}`}><span>{plan.title}</span>{IC.arrowR}</Link>)}</section>}
 
@@ -77,10 +77,9 @@ export function MemoryDetail({ id, videoTools = false }: { id: string; videoTool
           <summary>What REIBRY found in your video<small>{view.videoAnalysed ? "Analysed" : "Not analysed"}</small></summary>
           <div className="disclosure-body">{videoTools && <VideoAnalysisControls memory={memory} onChange={setMemory} />}<VideoAnalysisPanel video={memory.video} /></div></details>}
 
-        <details className="disclosure"><summary>What REIBRY knows<small>{view.knows.length ? `${view.knows.reduce((sum, group) => sum + group.items.length, 0)} details` : "Only the link"}</small></summary>
+        <details className="disclosure"><summary>Saved details<small>{view.knows.length ? `${view.knows.reduce((sum, group) => sum + group.items.length, 0)} details` : "Original link"}</small></summary>
           <div className="disclosure-body">
             {view.knows.map(group => <div className="knows-group" key={group.heading}><h3>{group.heading}</h3><ul>{group.items.map((item, index) => <li key={index}>{item}</li>)}</ul></div>)}
-            {view.unknown.length > 0 && <div className="knows-group unknown"><h3>Not known yet</h3><ul>{view.unknown.map((item, index) => <li key={index}>{item}</li>)}</ul></div>}
             {view.originalUrl && <div className="knows-group"><h3>Saved link</h3><ul><li style={{ overflowWrap: "anywhere" }}>{view.originalUrl}</li></ul></div>}
           </div></details>
 

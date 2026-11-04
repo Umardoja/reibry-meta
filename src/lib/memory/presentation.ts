@@ -19,6 +19,10 @@ export type MemoryView = {
 };
 
 const text = (value: JsonValue | undefined | null) => typeof value === "string" && value.trim() ? value.trim() : null;
+/** Errors from a provider or storage layer are never useful Memory facts. Legacy rows may contain one, so suppress it in presentation. */
+export function isOperationalSourceText(value: string | null) {
+  return !!value && /\b(?:memory|memories|library|storage|details?|source)\b.{0,80}\b(?:could not|couldn't|failed|failure|unavailable|error)\b/i.test(value);
+}
 function fieldSource(memory: Memory, field: string) {
   const provenance = memory.metadata.provenance;
   return provenance && typeof provenance === "object" && !Array.isArray(provenance) && typeof provenance[field] === "string" ? provenance[field] : null;
@@ -26,23 +30,23 @@ function fieldSource(memory: Memory, field: string) {
 const platformNames: Record<string, string> = { tiktok: "TikTok", youtube: "YouTube", instagram: "Instagram" };
 // Plain-language explanations for metadata a platform did not provide. The link itself is always saved.
 const detailReasons: Record<string, string> = {
-  "provider-timeout": "The platform took too long to share details. You can try again later.",
-  "save-budget-exceeded": "Details took a while, so REIBRY saved the link first.",
-  "not-found-or-private": "The post may be private, deleted or unavailable where you are.",
-  "provider-blocked": "This site doesn't allow previews.",
-  "instagram-requires-meta-app-token": "Instagram doesn't share post details with apps like REIBRY yet, so only the link is saved.",
-  "share-link-unresolved": "This share link didn't lead to a specific post, so only the link is saved.",
+  "provider-timeout": "More details are unavailable right now. The original link is still saved.",
+  "save-budget-exceeded": "More details are unavailable right now. The original link is still saved.",
+  "not-found-or-private": "More details are unavailable right now. The original link is still saved.",
+  "provider-blocked": "More details are unavailable right now. The original link is still saved.",
+  "instagram-requires-meta-app-token": "More details are unavailable right now. The original link is still saved.",
+  "share-link-unresolved": "More details are unavailable right now. The original link is still saved.",
   // TikTok's oEmbed confirmed the post but returned no title or cover; that says nothing about whether the video itself has a caption.
-  "provider-returned-no-title": "Saved. REIBRY couldn't retrieve this video's description or cover.",
-  "unsafe-destination": "REIBRY doesn't open this kind of link, so only the link is saved.",
-  "not-a-web-page": "This link isn't a web page, so there was nothing to preview.",
-  "no-page-metadata": "The page doesn't publish a preview.",
-  "provider-error": "The platform didn't return any details.",
+  "provider-returned-no-title": "No description or cover is available from this source.",
+  "unsafe-destination": "More details are unavailable right now. The original link is still saved.",
+  "not-a-web-page": "More details are unavailable right now. The original link is still saved.",
+  "no-page-metadata": "No description or cover is available from this source.",
+  "provider-error": "More details are unavailable right now. The original link is still saved.",
 };
 export function detailsMessage(state: unknown, reason: unknown) {
   if (state === "complete") return null;
   if (state === "pending" || state === undefined) return null;
-  return (typeof reason === "string" && detailReasons[reason]) || (state === "partial" ? "Only some details were available." : "Only the link is saved.");
+  return (typeof reason === "string" && detailReasons[reason]) || (state === "partial" ? "Only some details are available." : "More details are unavailable right now. The original link is still saved.");
 }
 
 export function kindOf(memory: Memory): MemoryKind {
@@ -67,7 +71,11 @@ function kindLabelOf(memory: Memory, kind: MemoryKind) {
 function isGenericTitle(memory: Memory) {
   if (memory.sourceType === "video") return /^Video · \d+ s$/.test(memory.title);
   if (memory.sourceType !== "link") return false;
-  return memory.title === hostOf(memory.sourceUrl) || /^(?:TikTok|YouTube|Instagram) (?:video|post|reel|Short)(?: by @[\w.]+)?$/i.test(memory.title);
+  return memory.title === hostOf(memory.sourceUrl)
+    || /^(?:TikTok|YouTube|Instagram) (?:video|post|reel|Short)(?: by @[\w.]+)?$/i.test(memory.title)
+    // Early private-provider rows used this operational prefix as a stand-in title.
+    // Their validated description remains visible as the Memory summary instead.
+    || /^Saved (?:TikTok|Instagram) details\s*:/i.test(memory.title);
 }
 export function savedLabel(iso: string, now = new Date()) {
   const date = new Date(iso); if (Number.isNaN(date.getTime())) return "Saved";
@@ -93,14 +101,14 @@ const clamp = (value: string, max: number) => value.length > max ? `${value.slic
 
 export function presentMemory(memory: Memory, now = new Date()): MemoryView {
   const kind = kindOf(memory); const kindLabel = kindLabelOf(memory, kind); const platformName = platformNames[kind] ?? (kind === "note" ? "Note" : kind === "video" ? "Your video" : kindLabel);
-  const generic = isGenericTitle(memory);
+  const generic = isGenericTitle(memory) || isOperationalSourceText(memory.title);
   const creator = kind === "note" ? null : text(memory.metadata.author);
-  const caption = text(memory.metadata.caption);
+  const rawCaption = text(memory.metadata.caption); const caption = isOperationalSourceText(rawCaption) ? null : rawCaption;
   const sharedText = memory.sourceType === "link" ? text(memory.metadata.sharedText) : null;
   const userNote = memory.sourceType === "text" ? null : text(memory.rawText);
   const video = memory.video ?? null; const analysed = !!(video?.status === "ready" && video.visual);
   let summary: MemoryView["summary"] = null;
-  if (caption) summary = { text: clamp(caption, 220), from: fieldSource(memory, "caption") === "supadata-unverified" ? "Retrieved description via Supadata (origin not verified)" : `From ${platformName}` };
+  if (caption) summary = { text: clamp(caption, 220), from: fieldSource(memory, "caption") === "supadata-unverified" ? "Saved description" : `From ${platformName}` };
   else if (sharedText) summary = { text: clamp(sharedText, 220), from: "Shared with the link" };
   else if (analysed && video?.visual?.observations[0]) summary = { text: clamp(video.visual.observations.slice(0, 2).join(". "), 220), from: "From REIBRY's look at your video" };
   else if (memory.sourceType === "text" && memory.rawText) {
@@ -119,9 +127,9 @@ export function presentMemory(memory: Memory, now = new Date()): MemoryView {
   const knows: KnowledgeGroup[] = [];
   if (memory.sourceType === "link") {
     const unverified = fieldSource(memory, "caption") === "supadata-unverified" || fieldSource(memory, "author") === "supadata-unverified";
-    const fromPlatform = [!generic && !isUserTitle(memory) ? `${unverified ? "Retrieved label" : "Title"}: ${memory.title}` : null, creator ? `${unverified ? "Creator detail" : "Creator"}: ${creator}` : null, caption ? `${unverified ? "Retrieved description" : "Caption"}: ${clamp(caption, 400)}` : null,
+    const fromPlatform = [!generic && !isUserTitle(memory) ? `Title: ${memory.title}` : null, creator ? `Creator: ${creator}` : null, caption ? `Description: ${clamp(caption, 400)}` : null,
       safeThumbnail(memory.metadata.thumbnailUrl) ? "A cover image" : null].filter((item): item is string => !!item);
-    if (fromPlatform.length) knows.push({ heading: unverified ? "Retrieved via Supadata (origin not verified)" : `Shared by ${platformName}`, items: fromPlatform });
+    if (fromPlatform.length) knows.push({ heading: unverified ? "Details" : `Shared by ${platformName}`, items: fromPlatform });
     if (sharedText) knows.push({ heading: "Shared with the link", items: [clamp(sharedText, 400)] });
   }
   if (isUserTitle(memory) || userNote || memory.sourceType === "text") knows.push({ heading: "From you", items: [isUserTitle(memory) || memory.sourceType === "text" ? `Title: ${memory.title}` : null,
@@ -133,7 +141,7 @@ export function presentMemory(memory: Memory, now = new Date()): MemoryView {
   }
   const unknown: string[] = [];
   if (memory.sourceType === "link") {
-    unknown.push(`What happens in the ${kind === "web" ? "page" : "video"} itself — REIBRY hasn't watched or read it`);
+    unknown.push(`${kind === "web" ? "Page" : "Video"} content beyond the saved source details`);
     if (!caption) unknown.push("A caption or description");
     if (!safeThumbnail(memory.metadata.thumbnailUrl)) unknown.push("A cover image");
   }

@@ -32,11 +32,11 @@ function shownMemoryIds(turns: Turn[]) {
 
 function EvidenceList({ response }: { response: HomeResponse }) {
   const items = response.groundedAnswer?.citations.map(item => ({ id: item.memory_id, href: item.memory_href, title: item.title,
-    excerpt: item.evidence_limit === "metadata-only-link" ? "A saved link — REIBRY knows only what was saved with it, not what's in the video or page."
-      : item.evidence_limit === "analyzed-video" ? "Your video — from REIBRY's analysis of what it shows and says."
-      : item.evidence_limit === "video-not-analyzed" ? "Saved video, not analysed yet: only its title and your note were used." : null,
+    excerpt: item.evidence_limit === "metadata-only-link" ? "Saved link"
+      : item.evidence_limit === "analyzed-video" ? "Your video"
+      : item.evidence_limit === "video-not-analyzed" ? "Saved video" : null,
     reason: item.evidence_limit === "metadata-only-link" ? "Saved link" : item.evidence_limit === "analyzed-video" ? "Your video" : "Your note" })) ?? response.memories.map(item => ({ id: item.memoryId, href: item.memoryHref,
-      title: item.displayTitle, excerpt: item.storedExcerpt, reason: item.sourceType === "link" ? "A saved link — only what was saved with it" : item.sourceType === "video" ? "Your video" : "Your note" }));
+      title: item.displayTitle, excerpt: item.storedExcerpt, reason: item.sourceType === "link" ? "Saved link" : item.sourceType === "video" ? "Your video" : "Your note" }));
   if (!items.length) return null;
   return <div className="home-option-list">{items.map(item => <article className="home-option" key={item.id}><span className="home-option-copy"><strong>{item.title}</strong>
     <small>{item.excerpt || item.reason}</small></span><span className="home-option-actions"><Link className="home-action-chip" href={`/memories/${item.id}`}>View Memory</Link></span></article>)}</div>;
@@ -63,9 +63,9 @@ export function HomeConversation() {
     setLoading(true); setError("");
     try { const response = await fetch("/api/home", { method: "POST", credentials: "same-origin", cache: "no-store", signal: active.signal,
         headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...outgoing, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC" }) });
-      const body = await response.json(); if (!response.ok || !body?.data) throw new Error(body?.error?.message || "REIBRY could not complete that request.");
+      const body = await response.json(); if (!response.ok || !body?.data) throw new Error("That didn’t work. Try again.");
       append({ id: ++nextId.current, role: "assistant", response: body.data });
-    } catch (cause) { setError(cause instanceof Error && cause.name !== "AbortError" ? cause.message : "REIBRY took too long to respond."); }
+    } catch (cause) { setError(cause instanceof Error && cause.name !== "AbortError" ? cause.message : "That took too long. Try again."); }
     finally { clearTimeout(timer); if (controller.current === active) { controller.current = null; inFlight.current = false; } setLoading(false); }
   }
   function submit(event?: FormEvent) { event?.preventDefault(); const value = text.trim(); if (!value || loading || inFlight.current) return;
@@ -82,9 +82,9 @@ export function HomeConversation() {
         <button type="button" onClick={() => choose("Find my saved travel notes")}>Find a Memory</button><button type="button" onClick={() => choose("Add my meeting tomorrow at 10am")}>Plan something</button><button type="button" onClick={() => choose("What's coming up?")}>What&apos;s coming up?</button></div></div>}
       {turns.map(turn => <div key={turn.id} className={turn.role === "user" ? "home-turn home-turn-user" : "home-turn home-turn-assistant"}>{turn.role === "user" ? <p className="home-user-bubble">{turn.text}</p> : turn.response && <div className="home-assistant-turn"><span className="home-assistant-label">REIBRY</span><p className="home-assistant-text">{turn.response.message}</p>
         <EvidenceList response={turn.response}/><LifeList response={turn.response}/>
-        {turn.response.lifeDraft && <div className="home-draft-card"><p><strong>{turn.response.lifeDraft.title}</strong></p><p>{new Intl.DateTimeFormat(undefined, { dateStyle: "full", timeStyle: "short" }).format(new Date(turn.response.lifeDraft.startDate!))} · {turn.response.lifeDraft.type}</p><p className="field-hint">This is a draft. It has not been saved and no reminder is scheduled.</p><div className="home-message-actions">
+        {turn.response.lifeDraft && <div className="home-draft-card"><p><strong>{turn.response.lifeDraft.title}</strong></p><p>{new Intl.DateTimeFormat(undefined, { dateStyle: "full", timeStyle: "short" }).format(new Date(turn.response.lifeDraft.startDate!))} · {turn.response.lifeDraft.type}</p><p className="field-hint">Review the details before saving.</p><div className="home-message-actions">
           <button className="home-action-chip" type="button" disabled={loading} onClick={() => void request({ message: turn.response!.lifeDraft!.sourceText, mode: "confirm-life", history: [], references: [] })}>Save to Life</button><Link className="home-action-chip" href="/life">Review Life</Link></div></div>}
-        {turn.response.planningDraft && <HomePlanningDraft draft={turn.response.planningDraft}/>}
+        {turn.response.planningDraft && <HomePlanningDraft draft={turn.response.planningDraft} modelName={turn.response.groundedAnswer?.model ?? null}/>}
         {turn.response.savedLife && <Link className="home-action-chip" href={turn.response.savedLife.href}>View saved Life context</Link>}
         {turn.response.actionProposals.length > 0 && <ActionProposalReview proposals={turn.response.actionProposals} onChanged={proposal => updateProposal(turn.id, proposal)} />}
       </div>}</div>)}

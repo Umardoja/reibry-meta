@@ -36,7 +36,7 @@ export function MemoryLibrary() {
     void getJson(`/api/memories?limit=${PAGE}`, controller.signal).then(data => {
       if (!active) return; if (!Array.isArray(data?.items)) throw new Error();
       setView({ status: "ready", items: data.items, next: data.nextOffset ?? null, message: "" });
-    }).catch(() => { if (active) setView({ status: "error", items: [], next: null, message: "Your Memories couldn't be loaded. Check your connection and try again." }); })
+    }).catch(() => { if (active) setView({ status: "error", items: [], next: null, message: "Your saved items are unavailable right now. Try again." }); })
       .finally(() => clearTimeout(timer));
     return () => { active = false; clearTimeout(timer); controller.abort(); };
   }, []);
@@ -44,7 +44,7 @@ export function MemoryLibrary() {
     if (view.next === null || loadingMore) return; setLoadingMore(true);
     try { const data = await getJson(`/api/memories?limit=${PAGE}&offset=${view.next}`, AbortSignal.timeout(12_000));
       setView(current => ({ ...current, items: [...current.items, ...data.items.filter((item: Memory) => !current.items.some(existing => existing.id === item.id))], next: data.nextOffset ?? null })); }
-    catch { setView(current => ({ ...current, message: "More Memories couldn't be loaded. Try again." })); } finally { setLoadingMore(false); }
+    catch { setView(current => ({ ...current, message: "More saved items are unavailable right now. Try again." })); } finally { setLoadingMore(false); }
   }
   async function runSearch(text: string) {
     const seq = ++searchSeq.current; setSearch({ status: "loading", query: text, items: [], message: "" });
@@ -83,7 +83,7 @@ export function MemoryLibrary() {
       {search.status === "ready" && <p>{search.items.length ? `${search.items.length} found` : "Try a creator, a word from your note or the platform name."}</p>}</div>}
     {(view.status === "loading" || search.status === "loading") && <ul className="skeleton-grid" aria-hidden="true">{Array.from({ length: 6 }, (_, index) => <li key={index} className="skeleton-card"><span /><span /><span /></li>)}</ul>}
     {view.status === "loading" && <p className="sr-only" role="status">Loading your Memories…</p>}
-    {view.status === "error" && <div className="notice" role="alert"><h2>Couldn&apos;t load your Memories</h2><p>{view.message}</p>
+    {view.status === "error" && <div className="notice" role="alert"><h2>Memories unavailable</h2><p>{view.message}</p>
       <div className="inline-actions"><button type="button" className="btn-soft" onClick={() => window.location.reload()}>Try again</button></div></div>}
     {view.status === "ready" && total === 0 && <section className="empty-state"><div className="empty-art" aria-hidden="true"><span /><span /><span /></div>
       <h2>Nothing saved yet</h2><p>Found something worth keeping — a recipe, a video, a place, an idea? Save it here and REIBRY will remember it for you.</p>

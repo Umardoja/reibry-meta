@@ -100,9 +100,11 @@ function schedule(kind: PlanningKind, daysRemaining: number): PlanningScheduleSt
 }
 
 /** Returns a draft only when the user supplied both a bounded planning goal and a real date. */
-export function buildPlanningDraft(input: { message: string; timezone: string; now: Date; candidates: RetrievalItem[] }): PlanningDraftResult {
+export function buildPlanningDraft(input: { message: string; timezone: string; now: Date; candidates: RetrievalItem[]; forcePlanning?: boolean }): PlanningDraftResult {
   const kind = kindFor(input.message);
-  if (!kind || !isPlanningPrompt(input.message)) return { draft: null, question: null, query: null };
+  // The Plans entry is the user's explicit choice to plan. Home still requires an
+  // unambiguous planning request so ordinary conversation cannot become a Plan.
+  if (!kind || (!input.forcePlanning && !isPlanningPrompt(input.message))) return { draft: null, question: null, query: null };
   const due = resolveLifeDate(input.message, input.now, input.timezone);
   if (!due) return { draft: null, question: "When is it due? Give me a day or date so I can keep the plan realistic.", query: null };
   const subject = kind === "exam" ? examSubject(input.message) : "";

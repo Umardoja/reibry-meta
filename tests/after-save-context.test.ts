@@ -60,7 +60,7 @@ test("UI: one optional, skippable question after a limited save; no audio record
   assert.match(detail, /rawText: note\.trim\(\) \? note : null/, "clearing an optional saved-link note sends an explicit null");
   assert.match(detail, /\{player && preview && <div className="tiktok-preview"/, "the iframe exists only after the user asks");
   assert.match(detail, /sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-presentation"/);
-  assert.match(detail, /REIBRY doesn&apos;t read, save or search what it shows/);
+  assert.match(detail, /This preview stays on TikTok\./);
   assert.doesNotMatch(detail, /dangerouslySetInnerHTML|autoplay=1/);
   const card = await readFile("src/components/memory/memory-visual.tsx", "utf8");
   assert.ok(card.includes("view.summary?.text ?? view.note"), "the Memories list shows the user's note when the platform gave nothing");
