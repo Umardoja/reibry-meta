@@ -35,6 +35,13 @@ test("fragment handoff (#url=...) decodes safely and rejects anything that is no
   for (const bad of ["", "#", "#url=javascript%3Aalert(1)", "#url=%E0%A4%A", `#url=${"x".repeat(9_000)}`, "#url=https%3A%2F%2Fintranet%2Fsecret"]) assert.equal(parseSharedFragment(bad), null, bad);
 });
 
+test("Android Web Share Target text uses the same bounded public-link parser as Capture", () => {
+  const shared = parseSharedPayload(name => name === "text" ? `Study this ${full(POST)}?tracking=android` : null);
+  assert.equal(shared?.url, `${full(POST)}?tracking=android`);
+  assert.equal(shared?.note, "Study this");
+  assert.equal(parseSharedPayload(name => name === "text" ? "javascript:alert(1)" : null), null);
+});
+
 test("the exact iPhone TikTok and Instagram fragment forms survive decoding, including Instagram tracking parameters", () => {
   const tiktok = "https://vt.tiktok.com/ZSpdG4bL8/";
   const instagram = "https://www.instagram.com/reel/DfPxX1nRfxo/?vrfl=MWNkODZvMTltdXE5Ng==";
