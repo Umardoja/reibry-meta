@@ -5,26 +5,26 @@ import { createServer } from "node:net";
 import { setTimeout as delay } from "node:timers/promises";
 import test from "node:test";
 
-test("production app serves the foundation page and its stylesheet", async () => {
+test("production app serves the restored REIBRY shell and its stylesheet", async () => {
   const portReservation = createServer();
   portReservation.listen(0, "127.0.0.1");
   await once(portReservation, "listening");
   const { port } = portReservation.address();
   await new Promise((resolve) => portReservation.close(resolve));
+  const origin = "http://127.0.0.1:" + port;
 
   const server = spawn(process.execPath, [
     "node_modules/next/dist/bin/next", "start",
     "--hostname", "127.0.0.1", "--port", String(port),
   ], {
     windowsHide: true,
-    env: { ...process.env, NEXT_TELEMETRY_DISABLED: "1", AUTH_ENABLED: "false" },
+    env: { ...process.env, NEXT_TELEMETRY_DISABLED: "1", AUTH_ENABLED: "false", AUTH_SITE_URL: origin },
     stdio: ["ignore", "pipe", "pipe"],
   });
   let output = "";
   server.stdout.on("data", (data) => { output += data; });
   server.stderr.on("data", (data) => { output += data; });
   const exited = once(server, "exit");
-  const origin = "http://127.0.0.1:" + port;
 
   try {
     let response;
@@ -42,14 +42,15 @@ test("production app serves the foundation page and its stylesheet", async () =>
     assert.match(html, /<html[^>]*lang="en"/);
     assert.match(html, /<title>REIBRY/);
     assert.match(html, /<main[^>]*id="main"/);
-    assert.match(html, /<h1[^>]*>From Saved/);
-    assert.match(html, /to Done/);
-    assert.match(html, /A personal AI memory and action platform\./);
-    assert.match(html, /Meta Edition — Application Foundation/);
-    assert.match(html, /About this foundation/);
-    assert.match(html, /<dialog[^>]*aria-labelledby=/);
-    assert.match(html, /<label for="preview-label">Example text field/);
-    assert.doesNotMatch(html, /href="\/(memories|capture|plans|settings)"/);
+    assert.match(html, /Checking your session/);
+    assert.match(html, /HomeConversation/);
+    assert.match(html, /aria-label="Main navigation"/);
+    assert.match(html, /href="\/plans"/);
+    assert.match(html, /href="\/settings"/);
+    assert.match(html, /href="\/memories"/);
+    assert.match(html, /href="\/capture"/);
+    assert.match(html, /href="\/ask"/);
+    assert.match(html, /href="\/actions"/);
     const stylesheet = html.match(/<link[^>]*href="([^"]+\.css[^"]*)"/)?.[1];
     assert.ok(stylesheet, "Rendered page must include its CSS");
     const cssResponse = await fetch(new URL(stylesheet.replaceAll("&amp;", "&"), origin));
@@ -65,9 +66,103 @@ test("production app serves the foundation page and its stylesheet", async () =>
     assert.match(session.headers.get("cache-control"), /no-store/);
     const protectedResponse = await fetch(origin + "/api/auth/me");
     assert.equal(protectedResponse.status, 401);
+    const memories = await fetch(origin + "/api/memories");
+    assert.equal(memories.status, 401);
+    assert.equal((await memories.json()).error.code, "AUTH_REQUIRED");
+    const memoryCreate = await fetch(origin + "/api/memories", { method: "POST", headers: { Origin: origin, "Content-Type": "application/json" },
+      body: JSON.stringify({ rawText: "must not persist without a session" }) });
+    assert.equal(memoryCreate.status, 401);
+    const captureCreate = await fetch(origin + "/api/capture", { method: "POST", headers: { Origin: origin, "Content-Type": "application/json" },
+      body: JSON.stringify({ sourceType: "text", content: "must not persist without a session" }) });
+    assert.equal(captureCreate.status, 401);
+    const search = await fetch(origin + "/api/memories/search?q=private&limit=10");
+    assert.equal(search.status, 401);
+    assert.equal((await search.json()).error.code, "AUTH_REQUIRED");
+    const ask = await fetch(origin + "/api/ai/ask", { method: "POST", headers: { Origin: origin, "Sec-Fetch-Site": "same-origin", "Content-Type": "application/json" },
+      body: JSON.stringify({ question: "private" }) });
+    assert.equal(ask.status, 401);
+    assert.equal((await ask.json()).error.code, "AUTH_REQUIRED");
+    const actions = await fetch(origin + "/api/actions");
+    assert.equal(actions.status, 401);
+    assert.equal((await actions.json()).error.code, "AUTH_REQUIRED");
+    const proposals = await fetch(origin + "/api/actions/proposals");
+    assert.equal(proposals.status, 401);
+    const life = await fetch(origin + "/api/life");
+    assert.equal(life.status, 401);
+    assert.equal((await life.json()).error.code, "AUTH_REQUIRED");
+    const today = await fetch(origin + "/api/today");
+    assert.equal(today.status, 401);
+    assert.equal((await today.json()).error.code, "AUTH_REQUIRED");
+    const home = await fetch(origin + "/api/home", { method: "POST", headers: { Origin: origin, "Sec-Fetch-Site": "same-origin", "Content-Type": "application/json" },
+      body: JSON.stringify({ message: "Find my saved notes", timezone: "UTC" }) });
+    assert.equal(home.status, 401);
+    assert.equal((await home.json()).error.code, "AUTH_REQUIRED");
+    const plans = await fetch(origin + "/api/plans?limit=10");
+    assert.equal(plans.status, 401);
+    assert.equal((await plans.json()).error.code, "AUTH_REQUIRED");
+    const planCreate = await fetch(origin + "/api/plans", { method: "POST", headers: { Origin: origin, "Sec-Fetch-Site": "same-origin", "Content-Type": "application/json" },
+      body: JSON.stringify({ title: "private", memoryIds: [], requestId: "40000000-0000-4000-8000-000000000001" }) });
+    assert.equal(planCreate.status, 401);
+    const readyPacks = await fetch(origin + "/api/ready-packs?planId=30000000-0000-4000-8000-000000000001");
+    assert.equal(readyPacks.status, 401);
+    assert.equal((await readyPacks.json()).error.code, "AUTH_REQUIRED");
+    const candidates = await fetch(origin + "/api/ready-packs/candidates?planId=30000000-0000-4000-8000-000000000001");
+    assert.equal(candidates.status, 401);
+    const packCreate = await fetch(origin + "/api/ready-packs", { method: "POST", headers: { Origin: origin, "Sec-Fetch-Site": "same-origin", "Content-Type": "application/json" },
+      body: JSON.stringify({ planId: "30000000-0000-4000-8000-000000000001", selections: {}, requestId: "40000000-0000-4000-8000-000000000001" }) });
+    assert.equal(packCreate.status, 401);
+    const lifeCreate = await fetch(origin + "/api/life/create", {
+      method: "POST", headers: { Origin: origin, "Sec-Fetch-Site": "same-origin", "Content-Type": "application/json" },
+      body: JSON.stringify({ text: "must not persist without a session", timezone: "UTC" }),
+    });
+    assert.equal(lifeCreate.status, 401);
+    const lifeUpdate = await fetch(origin + "/api/life/10000000-0000-4000-8000-000000000001", {
+      method: "PATCH", headers: { Origin: origin, "Sec-Fetch-Site": "same-origin", "Content-Type": "application/json" },
+      body: JSON.stringify({ title: "must not update" }),
+    });
+    assert.equal(lifeUpdate.status, 401);
+    const lifeDelete = await fetch(origin + "/api/life/10000000-0000-4000-8000-000000000001", {
+      method: "DELETE", headers: { Origin: origin, "Sec-Fetch-Site": "same-origin" },
+    });
+    assert.equal(lifeDelete.status, 401);
+    const confirm = await fetch(origin + "/api/actions/proposals/10000000-0000-4000-8000-000000000001/confirm", {
+      method: "POST", headers: { Origin: origin, "Sec-Fetch-Site": "same-origin" },
+    });
+    assert.equal(confirm.status, 401);
     const account = await fetch(origin + "/account", { redirect: "manual" });
     assert.equal(account.status, 307);
     assert.match(account.headers.get("location"), /\/auth\?next=/);
+    const memoryPage = await fetch(origin + "/memories", { redirect: "manual" });
+    assert.equal(memoryPage.status, 307);
+    assert.match(memoryPage.headers.get("location"), /\/auth\?next=/);
+    // Stage 12J-1: a signed-out /capture reaches the page so a #url= share (invisible to the server) survives sign-in.
+    // The page shows only the sign-in handoff: no form, no data.
+    const capturePage = await fetch(origin + "/capture", { redirect: "manual" });
+    assert.equal(capturePage.status, 200);
+    const captureHtml = await capturePage.text();
+    assert.match(captureHtml, /Sign in to capture/);
+    assert.doesNotMatch(captureHtml, /id="capture-content"|Save to REIBRY/);
+    const askPage = await fetch(origin + "/ask", { redirect: "manual" });
+    assert.equal(askPage.status, 307);
+    assert.match(askPage.headers.get("location"), /\/auth\?next=/);
+    const actionsPage = await fetch(origin + "/actions", { redirect: "manual" });
+    assert.equal(actionsPage.status, 307);
+    assert.match(actionsPage.headers.get("location"), /\/auth\?next=/);
+    const lifePage = await fetch(origin + "/life", { redirect: "manual" });
+    assert.equal(lifePage.status, 307);
+    assert.match(lifePage.headers.get("location"), /\/auth\?next=/);
+    const lifeManagePage = await fetch(origin + "/life/manage", { redirect: "manual" });
+    assert.equal(lifeManagePage.status, 307);
+    assert.match(lifeManagePage.headers.get("location"), /\/auth\?next=/);
+    const todayPage = await fetch(origin + "/today", { redirect: "manual" });
+    assert.equal(todayPage.status, 307);
+    assert.match(todayPage.headers.get("location"), /\/auth\?next=/);
+    const plansPage = await fetch(origin + "/plans", { redirect: "manual" });
+    assert.equal(plansPage.status, 307);
+    assert.match(plansPage.headers.get("location"), /\/auth\?next=/);
+    const planPage = await fetch(origin + "/plans/30000000-0000-4000-8000-000000000001", { redirect: "manual" });
+    assert.equal(planPage.status, 307);
+    assert.match(planPage.headers.get("location"), /\/auth\?next=/);
     const rejected = await fetch(origin + "/api/auth/sign-in", { method: "POST", headers: { Origin: origin, "Content-Type": "application/json" },
       body: JSON.stringify({ email: "person@example.test", password: "test-only-password" }) });
     assert.equal(rejected.status, 503);

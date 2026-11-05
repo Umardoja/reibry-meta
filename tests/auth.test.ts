@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import { handleAuth, type AuthAdapter } from "../src/lib/auth/handler.ts";
 import { AuthFailure, bounded, credentials, missingSession, providerFailure, safeNext } from "../src/lib/auth/policy.ts";
@@ -67,7 +68,10 @@ test("expired session is cleared and protected endpoint refuses it", async () =>
   const result = await handleAuth("me", get("me"), () => adapter({ verify: async () => null }), true);
   assert.equal(result.status, 401); assert.equal(result.clearSession, true); assert.equal(result.data, null);
   assert.equal(missingSession({ code: "refresh_token_not_found" }), true);
+  // GoTrue answers a malformed stored refresh token with 400 validation_failed: an invalid session, not an outage.
+  assert.equal(missingSession({ name: "AuthApiError", status: 400, code: "validation_failed" }), true);
   assert.equal(missingSession({ status: 503 }), false);
+  assert.equal(missingSession({ name: "AuthRetryableFetchError", status: 0 }), false);
 });
 test("no cookies means no provider call and no protected data", async () => {
   const factory = () => { throw new Error("must not call"); };
@@ -102,6 +106,10 @@ test("return destination only accepts implemented local routes", () => {
   for (const value of ["https://outside.test", "//outside.test", "/\\outside.test", "/\n/outside.test", "/%2foutside.test", "/%5coutside.test", "javascript:alert(1)", "/auth", "/api/auth/me", "/account?next=https://outside.test", undefined, null])
     assert.equal(safeNext(value), null);
   assert.equal(safeNext("/"), "/"); assert.equal(safeNext("/account"), "/account");
+  assert.equal(safeNext("/memories"), "/memories");
+  assert.equal(safeNext("/capture"), "/capture");
+  assert.equal(safeNext("/ask"), "/ask");
+  assert.equal(safeNext("/actions"), "/actions");
 });
 test("PKCE callback requires cookie, exchanges once, verifies user and bounds destination", async () => {
   const req = new Request(origin + "/auth/callback?code=test-code&next=//outside.test");
@@ -194,4 +202,12 @@ test("canonical origin respects explicit deployment origin and preserves exact l
   assert.throws(() => canonicalOrigin(request, "http://outside.test"), AuthFailure);
   const response = await handleAuth("sign-out", new Request(request.url, { method: "POST", headers: { Origin: "https://outside.test" } }), () => adapter(), false, 20, "https://app.example.test");
   assert.equal(response.status, 403);
+});
+
+test("password visibility uses an in-field accessible eye control", () => {
+  const source = readFileSync(new URL("../src/components/auth/auth-form.tsx", import.meta.url), "utf8");
+  assert.match(source, /password-input-wrap/);
+  assert.match(source, /password-visibility-toggle/);
+  assert.match(source, /aria-label=\{visible \? "Hide password" : "Show password"\}/);
+  assert.doesNotMatch(source, />Show password</);
 });

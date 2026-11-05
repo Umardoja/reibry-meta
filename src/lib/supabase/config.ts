@@ -1,6 +1,7 @@
 // Server-only values are read by the server adapter, never in a browser component.
 import { AuthFailure } from "../auth/policy.ts";
-export function authConfig(env: Record<string, string | undefined>) {
+export type AuthEnvironment = Record<string, string | undefined>;
+export function authConfig(env: AuthEnvironment) {
   if (env.AUTH_ENABLED !== "true") throw new AuthFailure("AUTH_NOT_CONFIGURED");
   const url = env.SUPABASE_URL;
   const key = env.SUPABASE_PUBLISHABLE_KEY;

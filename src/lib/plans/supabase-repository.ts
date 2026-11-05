@@ -1,0 +1,17 @@
+import "server-only";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { decodePlan, serializePlan, type PlanCreate, type PlanUpdate } from "./contracts.ts";
+import { PlanRepositoryFailure, type PlanRepository, type PlanRepositoryFailureCode } from "./repository.ts";
+const selection = "id,user_id,title,description,start_date,status,life_context_id,version,created_at,updated_at,life_context:life_contexts!plans_life_owner_fk(id,title,type,start_date,status),plan_memories(memory_id,memory:memories!plan_memories_memory_owner_fk(id,title,source_type,analysis_status))";
+function fail(code: PlanRepositoryFailureCode = "STORAGE_UNAVAILABLE"): never { throw new PlanRepositoryFailure(code); }
+// PT409 is the stale-version business conflict (PostgREST HTTP 409); 40001 remains a genuine serialization failure.
+function mapError(error: { code?: string; message?: string } | null): never { if (error?.code === "PT409" || error?.code === "40001") return fail("CONFLICT"); if (["23503", "23514"].includes(error?.code || "")) return fail("INVALID_REFERENCE"); if (error?.code === "P0002") return fail("NOT_FOUND"); return fail(); }
+function decode(value: unknown) { try { return serializePlan(decodePlan(value)); } catch { return fail(); } }
+function rpcRow(data: unknown) { const value = Array.isArray(data) ? data[0] : data; if (!value || typeof value !== "object") return fail(); return value as Record<string, unknown>; }
+export function createSupabasePlanRepository(client: SupabaseClient, ownerId: string): PlanRepository { const read = async (id: string) => { const { data, error } = await client.from("plans").select(selection).eq("user_id", ownerId).eq("id", id).maybeSingle(); if (error) return mapError(error); if (!data) return fail("NOT_FOUND"); return decode(data); }; return { ownerId,
+  async create(input: PlanCreate) { const { data, error } = await client.rpc("create_owned_plan", { p_title: input.title, p_description: input.description, p_start_date: input.startDate, p_life_context_id: input.lifeContextId, p_memory_ids: input.memoryIds, p_idempotency_key: input.requestId }); if (error) return mapError(error); const result = rpcRow(data); const id = String(result.plan_id || ""); return { plan: await read(id), duplicate: result.duplicate === true }; },
+  async list(limit) { const { data, error } = await client.from("plans").select(selection).eq("user_id", ownerId).order("start_date", { ascending: true, nullsFirst: false }).order("created_at", { ascending: false }).order("id", { ascending: true }).limit(limit); if (error) return mapError(error); return (data || []).map(decode); },
+  read,
+  async update(id, input: PlanUpdate) { const { data, error } = await client.rpc("update_owned_plan", { p_plan_id: id, p_expected_version: input.expectedVersion, p_title: input.title ?? null, p_set_title: input.title !== undefined, p_description: input.description ?? null, p_set_description: input.description !== undefined, p_start_date: input.startDate ?? null, p_set_start_date: input.startDate !== undefined, p_status: input.status ?? null, p_life_context_id: input.lifeContextId ?? null, p_set_life_context: input.lifeContextId !== undefined, p_memory_ids: input.memoryIds ?? null }); if (error) return mapError(error); const result = rpcRow(data); return read(String(result.plan_id || "")); },
+  async delete(id) { const { data, error } = await client.rpc("delete_owned_plan", { p_plan_id: id }); if (error) return mapError(error); if (data !== true) return fail("NOT_FOUND"); }
+}; }

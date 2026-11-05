@@ -12,7 +12,8 @@
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "next typegen && tsc --noEmit",
-    "test": "node --conditions=react-server --experimental-strip-types --test tests/auth.test.ts tests/smoke.mjs"
+    "test": "node --conditions=react-server --experimental-strip-types --test tests/auth.test.ts tests/memory.test.ts tests/capture.test.ts tests/retrieval.test.ts tests/meta.test.ts tests/actions.test.ts tests/proposal-provenance.test.ts tests/life.test.ts tests/today.test.ts tests/home.test.ts tests/conversation-eval.test.ts tests/conversation-reference.test.ts tests/video.test.ts tests/video-minimal.test.ts tests/capture-share.test.ts tests/share-capture.test.ts tests/presentation.test.ts tests/plans.test.ts tests/ready-packs.test.ts tests/shared-text.test.ts tests/after-save-context.test.ts tests/supadata.test.ts tests/shortcut-capture.test.ts tests/smoke.mjs",
+    "verify:meta": "node --conditions=react-server --experimental-strip-types scripts/verify-meta.ts"
   },
   "dependencies": {
     "@supabase/ssr": "0.12.7",
@@ -28,6 +29,7 @@
     "@types/react-dom": "19.3.0",
     "eslint": "9.39.5",
     "eslint-config-next": "16.3.5",
+    "supabase": "^2.122.0",
     "typescript": "6.0.3"
   }
 }

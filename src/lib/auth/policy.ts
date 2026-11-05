@@ -31,12 +31,16 @@ export function providerFailure(error: { code?: string; status?: number; name?: 
   return new AuthFailure("AUTH_UNAVAILABLE");
 }
 export function missingSession(error: { code?: string; status?: number; name?: string }) {
+  // Only called after session verification, where validation_failed means a malformed stored refresh token.
   return error.name === "AuthSessionMissingError" || error.status === 401 ||
-    ["bad_jwt", "session_not_found", "refresh_token_not_found", "refresh_token_already_used"].includes(error.code || "");
+    ["bad_jwt", "session_not_found", "refresh_token_not_found", "refresh_token_already_used", "validation_failed"].includes(error.code || "");
 }
-export function safeNext(value: unknown): "/" | "/account" | null {
-  // Only implemented destinations. Reject encoded/normalized URL tricks as well.
-  return value === "/" || value === "/account" ? value : null;
+export function safeNext(value: unknown): string | null {
+  // Explicit product routes only. Query strings, encodings and arbitrary local paths remain rejected.
+  const routes = new Set(["/", "/account", "/settings", "/today", "/onboarding", "/memories", "/capture", "/ask", "/actions", "/life", "/life/manage", "/plans"]);
+  if (typeof value !== "string") return null;
+  if (routes.has(value)) return value;
+  return /^\/(?:memories|plans)\/[0-9a-f-]{36}$/i.test(value) ? value : null;
 }
 export function credentials(value: unknown, signup: boolean): { email: string; password: string; next: string } {
   if (!value || typeof value !== "object") throw new AuthFailure("INVALID_REQUEST");

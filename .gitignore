@@ -34,6 +34,8 @@ test-results/
 playwright-report/
 demo-output/
 design-reference/
+# Supabase CLI local state (project links, version markers, and credentials)
+supabase/.temp/
 # Native build artifacts
 .gradle/
 android/.gradle/
