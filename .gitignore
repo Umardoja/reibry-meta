@@ -47,3 +47,4 @@ android/local.properties
 Thumbs.db
 .vscode/
 .idea/
+.vercel
