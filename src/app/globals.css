@@ -82,6 +82,11 @@ h1 { font-size: clamp(2.75rem, 6vw, 4.5rem); line-height: 1.08; letter-spacing: 
 .auth-tabs [aria-pressed="true"] { background: var(--surface-low); color: var(--primary); }
 .auth-form { width: 100%; padding: 18px; background: var(--surface); border-radius: var(--r-xl); border: 1px solid var(--border-hair); box-shadow: var(--shadow-float); }
 .auth-form > .button[type="submit"] { width: 100%; margin-top: 20px; }
+.password-input-wrap { position: relative; }
+.password-input-wrap .input { padding-inline-end: 56px; }
+.password-visibility-toggle { position: absolute; inset-inline-end: 4px; top: 50%; transform: translateY(-50%); display: grid; place-items: center; width: 40px; min-width: 40px; height: 40px; min-height: 40px; padding: 0; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--on-surface-var); }
+.password-visibility-toggle:hover:not(:disabled) { background: var(--surface-low); color: var(--primary-mid); }
+.password-visibility-toggle svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.8; }
 .auth-notice { padding: 16px; background: var(--surface-low); border: 1px solid var(--outline-var); border-radius: var(--r-md); font-size: .875rem; overflow-wrap: anywhere; }
 .auth-error { margin-top: 16px; color: var(--error); font-size: .875rem; }
 .auth-wrap > a { min-height: 44px; display: inline-flex; align-items: center; }

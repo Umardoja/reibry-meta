@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import { handleAuth, type AuthAdapter } from "../src/lib/auth/handler.ts";
 import { AuthFailure, bounded, credentials, missingSession, providerFailure, safeNext } from "../src/lib/auth/policy.ts";
@@ -201,4 +202,12 @@ test("canonical origin respects explicit deployment origin and preserves exact l
   assert.throws(() => canonicalOrigin(request, "http://outside.test"), AuthFailure);
   const response = await handleAuth("sign-out", new Request(request.url, { method: "POST", headers: { Origin: "https://outside.test" } }), () => adapter(), false, 20, "https://app.example.test");
   assert.equal(response.status, 403);
+});
+
+test("password visibility uses an in-field accessible eye control", () => {
+  const source = readFileSync(new URL("../src/components/auth/auth-form.tsx", import.meta.url), "utf8");
+  assert.match(source, /password-input-wrap/);
+  assert.match(source, /password-visibility-toggle/);
+  assert.match(source, /aria-label=\{visible \? "Hide password" : "Show password"\}/);
+  assert.doesNotMatch(source, />Show password</);
 });

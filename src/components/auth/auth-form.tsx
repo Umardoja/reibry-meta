@@ -45,8 +45,15 @@ export function AuthForm({ next, configured, notice }: { next: string | null; co
     </div>
     <form className="auth-form" onSubmit={submit} aria-busy={busy}>
       <TextField id="auth-email" label="Email" type="email" required autoComplete="email" maxLength={254} value={email} onChange={event => setEmail(event.target.value)} disabled={busy} />
-      <TextField id="auth-password" label="Password" type={visible ? "text" : "password"} required minLength={mode === "sign-up" ? 8 : 1} maxLength={1024} autoComplete={mode === "sign-in" ? "current-password" : "new-password"} value={password} onChange={event => setPassword(event.target.value)} disabled={busy} />
-      <Button variant="ghost" aria-controls="auth-password" aria-pressed={visible} onClick={() => setVisible(value => !value)}>{visible ? "Hide password" : "Show password"}</Button>
+      <div className="field">
+        <label htmlFor="auth-password">Password</label>
+        <div className="password-input-wrap">
+          <input id="auth-password" className="input" type={visible ? "text" : "password"} required minLength={mode === "sign-up" ? 8 : 1} maxLength={1024} autoComplete={mode === "sign-in" ? "current-password" : "new-password"} value={password} onChange={event => setPassword(event.target.value)} disabled={busy} />
+          <button className="password-visibility-toggle" type="button" aria-controls="auth-password" aria-pressed={visible} aria-label={visible ? "Hide password" : "Show password"} title={visible ? "Hide password" : "Show password"} disabled={busy} onClick={() => setVisible(value => !value)}>
+            {visible ? <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 3 18 18M10.6 10.6a2 2 0 0 0 2.8 2.8M9.9 4.3A10.8 10.8 0 0 1 12 4c5.5 0 9.4 4.5 10 8-.2 1.1-.8 2.4-1.7 3.5M6.6 6.6C4.4 8 2.7 10.2 2 12c.8 3.5 4.5 8 10 8 1.5 0 2.9-.3 4.1-.9" /></svg> : <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-8 10-8 10 8 10 8-3.6 8-10 8S2 12 2 12Z" /><circle cx="12" cy="12" r="3" /></svg>}
+          </button>
+        </div>
+      </div>
       {mode === "sign-up" && <TextField id="auth-confirm" label="Confirm password" type="password" required minLength={8} maxLength={1024} autoComplete="new-password" value={confirm} onChange={event => setConfirm(event.target.value)} disabled={busy} />}
       {error && <p role="alert" className="auth-error">{error}</p>}
       {confirmation && <p role="status" className="auth-notice">If your account requires confirmation, check your email for the next step. You can then return to sign in.</p>}
