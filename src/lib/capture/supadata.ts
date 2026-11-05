@@ -5,15 +5,13 @@ import { parsePublicLink, safeMetadataUrl, type ParsedCaptureUrl } from "./url-p
 const ENDPOINT = "https://api.supadata.ai/v1/metadata";
 const TIMEOUT_MS = 5_000;
 const MAX_RESPONSE_BYTES = 65_536;
-const userIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const tagPattern = /^[\p{L}\p{N}_]{2,40}$/u;
-// This private pilot is intentionally pinned in code as well as configuration. A changed environment value cannot widen it.
-const approvedPilotIdentities = new Set([
-  "tiktok:7520627479627844920",
-  "instagram:DfPxX1nRfxo",
-]);
+const supportedPlatforms = new Set<ParsedCaptureUrl["platform"]>(["youtube", "tiktok", "instagram"]);
+const DEFAULT_REQUESTS_PER_USER_HOUR = 6;
+const MAX_REQUESTS_PER_USER_HOUR = 12;
 
-export type SupadataDependencies = { env: Record<string, string | undefined>; fetch: typeof fetch; timeoutMs?: number };
+export type SupadataRequestLimiter = { take: (ownerId: string) => boolean };
+export type SupadataDependencies = { env: Record<string, string | undefined>; fetch: typeof fetch; timeoutMs?: number; limiter?: SupadataRequestLimiter };
 export type SupadataMetadataFetcher = (link: ParsedCaptureUrl, ownerId: string, signal?: AbortSignal) => Promise<MetadataResult | null>;
 export type SupadataDiagnosticFetcher = (link: ParsedCaptureUrl, ownerId: string, signal?: AbortSignal) => Promise<{ metadata: MetadataResult | null; diagnostic: SupadataPilotSourceDiagnostic | null } | null>;
 /** Safe, field-free source-check categories for an owner-approved future diagnostic call. Never logged automatically. */
@@ -28,25 +26,44 @@ export type SupadataPilotSourceDiagnostic = {
 };
 const defaultDependencies: SupadataDependencies = { env: process.env, fetch };
 
-/** Default-off, exact-user private-development gate. It is never a general capture fallback. */
-export function supadataGate(ownerId: string, env: Record<string, string | undefined>) {
+function configuredRequestsPerUserHour(env: Record<string, string | undefined>) {
+  const value = env.SUPADATA_MAX_REQUESTS_PER_USER_HOUR?.trim();
+  if (!value) return DEFAULT_REQUESTS_PER_USER_HOUR;
+  if (!/^\d{1,2}$/.test(value)) return null;
+  const limit = Number(value);
+  return limit >= 1 && limit <= MAX_REQUESTS_PER_USER_HOUR ? limit : null;
+}
+
+/**
+ * A per-server-instance guard against accidental bursts. It is not a distributed
+ * billing ledger: verified provider credits remain the production spend boundary.
+ */
+export function createSupadataUserRateLimiter(limit: number, now = () => Date.now()): SupadataRequestLimiter {
+  const hits = new Map<string, number[]>();
+  return {
+    take(ownerId) {
+      const cutoff = now() - 60 * 60 * 1_000;
+      const current = (hits.get(ownerId) ?? []).filter(at => at > cutoff);
+      if (current.length >= limit) { hits.set(ownerId, current); return false; }
+      current.push(now()); hits.set(ownerId, current); return true;
+    },
+  };
+}
+
+function configuredLimiter(env: Record<string, string | undefined>) {
+  const limit = configuredRequestsPerUserHour(env);
+  return limit === null ? null : createSupadataUserRateLimiter(limit);
+}
+
+/** Default-off public feature gate for canonical, supported public video posts only. */
+export function supadataEnrichmentAllows(link: ParsedCaptureUrl, env: Record<string, string | undefined>) {
   const key = env.SUPADATA_API_KEY?.trim() ?? "";
-  const allowedUser = env.SUPADATA_DEV_USER_ID?.trim() ?? "";
-  return env.SUPADATA_DEV_ENABLED === "true" && key.length >= 16 && userIdPattern.test(allowedUser) && ownerId === allowedUser;
-}
-function configuredPilotIdentities(env: Record<string, string | undefined>) {
-  const raw = env.SUPADATA_DEV_ALLOWED_CANONICAL_IDS;
-  if (!raw || raw.length > 512) return null;
-  const values = raw.split(",").map(value => value.trim());
-  if (!values.length || values.some(value => !/^(tiktok:\d{10,25}|instagram:[A-Za-z0-9_-]{5,64})$/.test(value))) return null;
-  const configured = new Set(values);
-  if (configured.size !== approvedPilotIdentities.size || values.length !== configured.size) return null;
-  return [...approvedPilotIdentities].every(value => configured.has(value)) ? configured : null;
-}
-/** Requires both the exact disposable user and the two hard-pinned canonical pilot identities. */
-export function supadataPilotAllows(ownerId: string, link: ParsedCaptureUrl, env: Record<string, string | undefined>) {
-  const configured = configuredPilotIdentities(env);
-  return supadataGate(ownerId, env) && !link.shortLink && !!link.postId && !!configured && configured.has(link.identity);
+  return env.SUPADATA_ENRICHMENT_ENABLED === "true"
+    && key.length >= 16
+    && configuredRequestsPerUserHour(env) !== null
+    && supportedPlatforms.has(link.platform)
+    && !link.shortLink
+    && !!link.postId;
 }
 
 function failure(reason: string): MetadataResult {
@@ -76,7 +93,8 @@ function displayTitle(link: ParsedCaptureUrl, description: string | undefined, p
   if (providerTitle) return providerTitle;
   if (!description) return undefined;
   const excerpt = description.split(/[.!?]\s/, 1)[0].trim().slice(0, 150);
-  return excerpt ? `Saved ${link.platform === "instagram" ? "Instagram" : "TikTok"} details: ${excerpt}`.slice(0, 200) : undefined;
+  const platform = link.platform === "instagram" ? "Instagram" : link.platform === "youtube" ? "YouTube" : "TikTok";
+  return excerpt ? `Saved ${platform} details: ${excerpt}`.slice(0, 200) : undefined;
 }
 async function readJson(response: Response, signal: AbortSignal) {
   const length = Number(response.headers.get("content-length"));
@@ -131,10 +149,8 @@ function exactInstagramShortcode(link: ParsedCaptureUrl, providerId: string) {
 function sourceMatch(link: ParsedCaptureUrl, data: Record<string, unknown>): SourceMatch {
   if (data.platform !== link.platform) return { returned: null, diagnostic: "platform" };
   if (typeof data.id !== "string") return { returned: null, diagnostic: "missing-id" };
-  // A live, one-shot TikTok response on 2026-11-02 had the documented platform and exact numeric video ID but omitted url.
-  // A live Instagram response used the exact saved shortcode but omitted url. In either narrowly scoped case,
-  // the pre-validated canonical owner Memory supplies the URL. The fetcher still requires the exact owner and
-  // two-item pilot allowlist; the trusted writer re-checks the locked owned link Memory before persistence.
+  // Live TikTok and Instagram responses have respectively omitted their URLs while preserving their exact platform IDs.
+  // In those narrow cases the saved canonical owner Memory supplies the URL; the trusted writer re-checks ownership.
   if (data.url === undefined) {
     if (link.platform === "tiktok" && link.postId && data.id === link.postId) return { returned: link, diagnostic: null };
     if (exactInstagramShortcode(link, data.id)) return { returned: link, diagnostic: null };
@@ -199,11 +215,11 @@ function diagnosticIdentityFields(link: ParsedCaptureUrl, data: Record<string, u
 }
 
 /**
- * Disabled unless the exact owner, allowlist and SUPADATA_DEV_DIAGNOSTICS=true all pass. This makes no network request and never logs.
+ * Disabled unless the public feature gate and SUPADATA_DIAGNOSTICS=true both pass. This makes no network request and never logs.
  * It intentionally returns only source-shape facts—never provider text, thumbnails, credentials, query strings or raw payloads.
  */
-export function pilotSupadataSourceDiagnostic(ownerId: string, link: ParsedCaptureUrl, value: unknown, env: Record<string, string | undefined>): SupadataPilotSourceDiagnostic | null {
-  if (env.SUPADATA_DEV_DIAGNOSTICS !== "true" || !supadataPilotAllows(ownerId, link, env) || !value || typeof value !== "object" || Array.isArray(value)) return null;
+export function supadataSourceDiagnostic(link: ParsedCaptureUrl, value: unknown, env: Record<string, string | undefined>): SupadataPilotSourceDiagnostic | null {
+  if (env.SUPADATA_DIAGNOSTICS !== "true" || !supadataEnrichmentAllows(link, env) || !value || typeof value !== "object" || Array.isArray(value)) return null;
   const data = value as Record<string, unknown>; const media = data.media && typeof data.media === "object" && !Array.isArray(data.media) ? data.media as Record<string, unknown> : {};
   const urlIdentity = diagnosticUrlIdentity(link, data.url);
   return { approvedIdentity: link.identity, returnedPlatform: diagnosticPlatform(data.platform), returnedIdFormat: diagnosticIdFormat(data.id),
@@ -239,10 +255,12 @@ export function parseSupadataMetadata(link: ParsedCaptureUrl, value: unknown): M
     ...(useful ? {} : { reason: "supadata-empty-response" }), title, caption: description, author, thumbnailUrl, hashtags, publishedAt, canonicalUrl: returned.normalized, provenance };
 }
 
-/** Calls one fixed vendor endpoint only after the exact authenticated development user passed the default-off gate. No retry. */
+/** Calls one fixed metadata endpoint only after an owned canonical post passes the default-off gate. No retry. */
 export function createSupadataMetadataFetcher(dependencies: SupadataDependencies = defaultDependencies): SupadataMetadataFetcher {
+  const limiter = dependencies.limiter ?? configuredLimiter(dependencies.env);
   return async (link, ownerId, requestSignal) => {
-    if (!supadataPilotAllows(ownerId, link, dependencies.env)) return null;
+    if (!supadataEnrichmentAllows(link, dependencies.env)) return null;
+    if (!limiter?.take(ownerId)) return failure("supadata-user-rate-limited");
     if (requestSignal?.aborted) return failure("supadata-timeout");
     const controller = new AbortController(); const cancel = () => controller.abort();
     requestSignal?.addEventListener("abort", cancel, { once: true });
@@ -276,7 +294,7 @@ export function createSupadataDiagnosticFetcher(dependencies: SupadataDependenci
           const controller = new AbortController();
           try {
             const raw = await readJson(response.clone(), controller.signal);
-            diagnostic = pilotSupadataSourceDiagnostic(ownerId, link, raw, dependencies.env);
+            diagnostic = supadataSourceDiagnostic(link, raw, dependencies.env);
           } catch { /* Production parsing still decides the safe result. */ }
           finally { controller.abort(); }
         }

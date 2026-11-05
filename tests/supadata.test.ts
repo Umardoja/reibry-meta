@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { toModelEvidence } from "../src/lib/ai/meta/contracts.ts";
-import { createSupadataDiagnosticFetcher, createSupadataMetadataFetcher, diagnoseSupadataSourceMatch, instagramShortcodeToMediaId, parseSupadataMetadata, pilotSupadataSourceDiagnostic, supadataGate, supadataPilotAllows } from "../src/lib/capture/supadata.ts";
+import { createSupadataDiagnosticFetcher, createSupadataMetadataFetcher, createSupadataUserRateLimiter, diagnoseSupadataSourceMatch, instagramShortcodeToMediaId, parseSupadataMetadata, supadataEnrichmentAllows, supadataSourceDiagnostic } from "../src/lib/capture/supadata.ts";
 import { capture, enrichmentDetails, enrichSavedLink, type LinkEnricher } from "../src/lib/capture/service.ts";
 import { parsePublicLink } from "../src/lib/capture/url-policy.ts";
 import { presentMemory } from "../src/lib/memory/presentation.ts";
@@ -14,8 +14,7 @@ const userA = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const userB = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const tiktokUrl = "https://m.tiktok.com/v/7520627479627844920.html";
 const instagramUrl = "https://www.instagram.com/reel/DfPxX1nRfxo/";
-const approvedIds = "tiktok:7520627479627844920,instagram:DfPxX1nRfxo";
-const env = { SUPADATA_DEV_ENABLED: "true", SUPADATA_API_KEY: "not-a-real-key-123456", SUPADATA_DEV_USER_ID: userA, SUPADATA_DEV_ALLOWED_CANONICAL_IDS: approvedIds };
+const env = { SUPADATA_ENRICHMENT_ENABLED: "true", SUPADATA_API_KEY: "not-a-real-key-123456", SUPADATA_MAX_REQUESTS_PER_USER_HOUR: "6" };
 const primaryMissing: LinkEnricher = async () => ({ status: "partial", provider: "tiktok-oembed", reason: "provider-returned-no-title", provenance: {} });
 
 function vendorRecord(url: string, platform: "tiktok" | "instagram", id: string, description = "Butterfly birthday cake decoration with purple icing #cakeidea") {
@@ -23,32 +22,30 @@ function vendorRecord(url: string, platform: "tiktok" | "instagram", id: string,
     media: { type: "video", thumbnailUrl: "https://cdn.example.net/cover.jpg" }, tags: ["cakeidea", "birthday"], createdAt: "2026-10-28T10:00:00Z" };
 }
 
-test("Supadata is default-off and restricted to the one configured disposable development owner", () => {
-  assert.equal(supadataGate(userA, env), true);
-  assert.equal(supadataGate(userB, env), false);
-  assert.equal(supadataGate(userA, { ...env, SUPADATA_DEV_ENABLED: "false" }), false);
-  assert.equal(supadataGate(userA, { ...env, SUPADATA_API_KEY: undefined }), false);
+test("Supadata is default-off, server-key-only, and limited to supported canonical public posts", () => {
+  assert.equal(supadataEnrichmentAllows(parsePublicLink(tiktokUrl), env), true);
+  assert.equal(supadataEnrichmentAllows(parsePublicLink(tiktokUrl), { ...env, SUPADATA_ENRICHMENT_ENABLED: "false" }), false);
+  assert.equal(supadataEnrichmentAllows(parsePublicLink(tiktokUrl), { ...env, SUPADATA_API_KEY: undefined }), false);
+  assert.equal(supadataEnrichmentAllows(parsePublicLink(tiktokUrl), { ...env, SUPADATA_MAX_REQUESTS_PER_USER_HOUR: "0" }), false);
 });
 
-test("the private pilot accepts exactly the two selected canonical identities and fails closed for malformed, widened or short-link configuration", () => {
-  const approved = [tiktokUrl, instagramUrl];
-  for (const url of approved) assert.equal(supadataPilotAllows(userA, parsePublicLink(url), env), true, url);
-  assert.equal(supadataPilotAllows(userA, parsePublicLink("https://m.tiktok.com/v/7520627479627844921.html"), env), false);
-  assert.equal(supadataPilotAllows(userB, parsePublicLink(tiktokUrl), env), false);
-  assert.equal(supadataPilotAllows(userA, parsePublicLink("https://vm.tiktok.com/ZMabc123/"), env), false);
-  assert.equal(supadataPilotAllows(userA, parsePublicLink(tiktokUrl), { ...env, SUPADATA_DEV_ALLOWED_CANONICAL_IDS: "tiktok:7520627479627844920" }), false);
-  assert.equal(supadataPilotAllows(userA, parsePublicLink(tiktokUrl), { ...env, SUPADATA_DEV_ALLOWED_CANONICAL_IDS: approvedIds + ",tiktok:7520627479627844921" }), false);
-  assert.equal(supadataPilotAllows(userA, parsePublicLink(tiktokUrl), { ...env, SUPADATA_DEV_ALLOWED_CANONICAL_IDS: undefined }), false);
+test("the public gate admits canonical TikTok, Instagram, and YouTube identities outside the former pilot while rejecting unsafe forms", () => {
+  for (const url of [tiktokUrl, instagramUrl, "https://www.youtube.com/watch?v=rfscVS0vtbw", "https://m.tiktok.com/v/7520627479627844921.html"]) {
+    assert.equal(supadataEnrichmentAllows(parsePublicLink(url), env), true, url);
+  }
+  assert.equal(supadataEnrichmentAllows(parsePublicLink("https://vm.tiktok.com/ZMabc123/"), env), false);
+  assert.equal(supadataEnrichmentAllows(parsePublicLink("https://example.com/video"), env), false);
 });
 
-test("the network fetcher cannot spend a pilot credit for an unapproved identity or malformed allowlist", async () => {
+test("the network fetcher cannot spend a credit for short, unsupported, disabled, or malformed configuration", async () => {
   let calls = 0;
   const fetcher = createSupadataMetadataFetcher({ env, fetch: async () => { calls++; throw new Error("must not fetch"); } });
-  assert.equal(await fetcher(parsePublicLink("https://m.tiktok.com/v/7520627479627844921.html"), userA), null);
-  assert.equal(await fetcher(parsePublicLink("https://www.instagram.com/reel/CnotApproved1/"), userA), null);
   assert.equal(await fetcher(parsePublicLink("https://vm.tiktok.com/ZMabc123/"), userA), null);
-  const malformed = createSupadataMetadataFetcher({ env: { ...env, SUPADATA_DEV_ALLOWED_CANONICAL_IDS: "tiktok:7520627479627844920" }, fetch: async () => { calls++; throw new Error("must not fetch"); } });
+  assert.equal(await fetcher(parsePublicLink("https://example.com/video"), userA), null);
+  const malformed = createSupadataMetadataFetcher({ env: { ...env, SUPADATA_MAX_REQUESTS_PER_USER_HOUR: "bad" }, fetch: async () => { calls++; throw new Error("must not fetch"); } });
   assert.equal(await malformed(parsePublicLink(tiktokUrl), userA), null);
+  const disabled = createSupadataMetadataFetcher({ env: { ...env, SUPADATA_ENRICHMENT_ENABLED: "false" }, fetch: async () => { calls++; throw new Error("must not fetch"); } });
+  assert.equal(await disabled(parsePublicLink(tiktokUrl), userA), null);
   assert.equal(calls, 0);
 });
 
@@ -126,11 +123,10 @@ test("source-match diagnostics classify only the failed identity check and retai
   ]) assert.equal(parseSupadataMetadata(link, value).reason, "supadata-mismatched-source");
 });
 
-test("server-only pilot diagnostics are default-off, require the exact gate, and omit provider text", () => {
+test("server-only diagnostics are default-off, require the public feature gate, and omit provider text", () => {
   const link = parsePublicLink(tiktokUrl); const record = vendorRecord("https://m.tiktok.com/v/7520627479627844920.html", "tiktok", "7520627479627844920", "never return this text");
-  assert.equal(pilotSupadataSourceDiagnostic(userA, link, record, env), null);
-  assert.equal(pilotSupadataSourceDiagnostic(userB, link, record, { ...env, SUPADATA_DEV_DIAGNOSTICS: "true" }), null);
-  const diagnostic = pilotSupadataSourceDiagnostic(userA, link, record, { ...env, SUPADATA_DEV_DIAGNOSTICS: "true" });
+  assert.equal(supadataSourceDiagnostic(link, record, env), null);
+  const diagnostic = supadataSourceDiagnostic(link, record, { ...env, SUPADATA_DIAGNOSTICS: "true" });
   assert.deepEqual(diagnostic, { approvedIdentity: "tiktok:7520627479627844920", returnedPlatform: "tiktok", returnedIdFormat: "numeric",
     returnedUrlHostPath: "m.tiktok.com/v/7520627479627844920.html", condition: null, returnedIdRepresentation: "numeric-other", returnedUrlIdentity: "exact",
     identityFields: "verified", descriptionPresent: true, creatorPresent: true, tagsPresent: true, thumbnailPresent: true });
@@ -141,7 +137,7 @@ test("the diagnostic fetcher reports sanitized Instagram identity shape before p
   const link = parsePublicLink(instagramUrl); const state = createMemoryTestState(); const repo = trackedRepository(userA, state);
   const saved = await capture({ sourceType: "link", content: instagramUrl, title: "My Instagram title", note: "My own note" }, repo);
   const exactLiveShape = { ...vendorRecord(instagramUrl, "instagram", "DfPxX1nRfxo", "Weekend market flowers"), url: undefined };
-  const fetcher = createSupadataDiagnosticFetcher({ env: { ...env, SUPADATA_DEV_DIAGNOSTICS: "true" }, fetch: async () =>
+  const fetcher = createSupadataDiagnosticFetcher({ env: { ...env, SUPADATA_DIAGNOSTICS: "true" }, fetch: async () =>
     new Response(JSON.stringify(exactLiveShape), { headers: { "content-type": "application/json" } }) });
   const result = await fetcher(link, userA); assert.ok(result); assert.equal(result.diagnostic?.condition, null);
   assert.equal(result.diagnostic?.returnedIdRepresentation, "shortcode"); assert.equal(result.diagnostic?.returnedUrlIdentity, "missing");
@@ -154,8 +150,8 @@ test("the diagnostic fetcher reports sanitized Instagram identity shape before p
 });
 
 test("sanitized Instagram diagnostics distinguish every rejected identity shape without leaking provider content", () => {
-  const link = parsePublicLink(instagramUrl); const diagnosticEnv = { ...env, SUPADATA_DEV_DIAGNOSTICS: "true" };
-  const diagnose = (record: unknown) => pilotSupadataSourceDiagnostic(userA, link, record, diagnosticEnv)!;
+  const link = parsePublicLink(instagramUrl); const diagnosticEnv = { ...env, SUPADATA_DIAGNOSTICS: "true" };
+  const diagnose = (record: unknown) => supadataSourceDiagnostic(link, record, diagnosticEnv)!;
   const exactMissingUrl = diagnose({ platform: "instagram", id: "DfPxX1nRfxo" });
   assert.equal(exactMissingUrl.condition, null); assert.equal(exactMissingUrl.returnedUrlIdentity, "missing"); assert.equal(exactMissingUrl.identityFields, "verified");
   assert.equal(diagnose({ platform: "instagram", id: "DifferentPost9" }).condition, "id");
@@ -188,16 +184,30 @@ test("the fixed server-side client sends only the canonical URL, has no retry, a
     return new Response(JSON.stringify(vendorRecord(tiktokUrl, "tiktok", "7520627479627844920")), { headers: { "content-type": "application/json" } }); } });
   const result = await fetcher(parsePublicLink(tiktokUrl), userA);
   assert.equal(calls, 1); const requested = seen as URL | null; assert.ok(requested); assert.equal(requested.origin, "https://api.supadata.ai"); assert.equal(requested.pathname, "/v1/metadata"); assert.equal(result?.caption?.includes("Butterfly"), true);
-  const denied = await fetcher(parsePublicLink(tiktokUrl), userB); assert.equal(denied, null); assert.equal(calls, 1);
+  const secondOwner = await fetcher(parsePublicLink(tiktokUrl), userB); assert.equal(secondOwner?.status, "complete"); assert.equal(calls, 2);
   for (const [status, reason] of [[403, "supadata-forbidden"], [404, "supadata-not-found"], [429, "supadata-rate-limited"]] as const) {
     const failed = createSupadataMetadataFetcher({ env, fetch: async () => { calls++; return new Response("", { status, headers: { "content-type": "application/json" } }); } });
     assert.equal((await failed(parsePublicLink(tiktokUrl), userA))?.reason, reason);
   }
-  assert.equal(calls, 4, "each failure makes one call; there is no automatic retry");
+  assert.equal(calls, 5, "each failure makes one call; there is no automatic retry");
   const timedOut = createSupadataMetadataFetcher({ env, timeoutMs: 5, fetch: async (_input, init) => new Promise<Response>((_resolve, reject) => {
     init?.signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")), { once: true });
   }) });
   assert.equal((await timedOut(parsePublicLink(tiktokUrl), userA))?.reason, "supadata-timeout");
+});
+
+test("the per-server-instance limiter blocks only one owner's burst and leaves another owner eligible", async () => {
+  const limiter = createSupadataUserRateLimiter(2, () => 1_000);
+  let calls = 0;
+  const fetcher = createSupadataMetadataFetcher({ env, limiter, fetch: async () => {
+    calls++; return new Response(JSON.stringify(vendorRecord(tiktokUrl, "tiktok", "7520627479627844920")), { headers: { "content-type": "application/json" } });
+  } });
+  const link = parsePublicLink(tiktokUrl);
+  assert.equal((await fetcher(link, userA))?.status, "complete");
+  assert.equal((await fetcher(link, userA))?.status, "complete");
+  assert.equal((await fetcher(link, userA))?.reason, "supadata-user-rate-limited");
+  assert.equal((await fetcher(link, userB))?.status, "complete");
+  assert.equal(calls, 3);
 });
 
 test("one owned saved Memory receives external details, remains searchable and never spends again on an ordinary re-share", async () => {

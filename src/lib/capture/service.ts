@@ -131,7 +131,7 @@ export async function enrichSavedLink(memoryId: string, repository: MemoryReposi
   const startedAt = performance.now();
   const parsed = parsePublicLink(owned.sourceUrl);
   let metadata = await withinBudget(enrich(parsed), budgetMs);
-  // Only the approved development owner can reach the optional provider, and only after the normal platform path lacks useful fields.
+  // The default-off optional provider runs only after the normal platform path lacks useful fields.
   // An attempted Supadata lookup is persisted as its own provider state so normal re-shares cannot spend another credit.
   if (!supadataAlreadyAttempted(owned) && needsSupplementalMetadata(metadata)) {
     const target = metadata.resolved ?? parsed;
